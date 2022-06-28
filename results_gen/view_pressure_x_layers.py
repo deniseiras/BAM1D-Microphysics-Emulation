@@ -37,7 +37,7 @@ for line in f:
 f.close()
 
 # primeiro maior
-arr_levs = [42, 28]
+arr_levs = [64, 28]
 arrPress_rescaled = []
 arrTemp_rescaled = []
 y=[]

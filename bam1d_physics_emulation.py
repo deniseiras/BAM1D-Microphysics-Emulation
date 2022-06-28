@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 # %tensorflow_version 2.x
 import os
-
 import numpy as np
 import tensorflow as tf
 
@@ -10,6 +9,7 @@ print("Tensorflow version " + tf.__version__)
 import pandas as pd
 from keras.models import load_model
 import time
+import pickle as pk
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', 50)
@@ -86,7 +86,7 @@ def preprocess_features(input_df):
   """
     # All input variables
     # "k", "si", "si_kmax_+_1", "sl", "Tc", "qv", "qc", "qr", "qi", "qs", "qg", "ni", "ns", "nr", "NG", "NC", "tke", "kzh", "gps", "omega"
-    input_features = ["k", "sl", "Tc", "qv", "qc", "qr", "qi", "qs", "qg", "ni", "ns", "nr", "NG", "NC", "kzh", "omega",
+    input_features = ["k", "sl", "Tc", "qv", "qc", "qr", "qi", "qs", "qg", "ni", "ns", "nr", "NG", "NC", "tke", "omega",
                       "LSRAIN", "LSSNOW"]
     selected_features = input_df[input_features]
 
@@ -202,33 +202,34 @@ def get_dic_levels_excluded(use_levs):
                 'ns': [17, 18],
                 'nr': range(12, 19),
                 'NG': [17, 18],
-                'NC': range(12, 19),
-
-                # TODO - EXPERIMENTAL
-                'EFFIS': range(1, 19)
+                'NC': range(12, 19)
             }
-        elif k_max == 28:  # 2014-2015 dt 360 ensemble 3x
+        elif k_max == 28:  # 2014-2015
             dic_var_levels_exclude_examples = { \
-                'ni': list(range(1, 11)) + list(range(21, 29)),
-                'ns': list(range(23, 29)),
+                'qc': range(16, 29),
+                'qr': range(16, 29),
+                'qi': list(range(1, 11)) + list(range(20, 29)),
+                'qs': range(23, 29),
+                'qg': range(23, 29),
+                'ni': list(range(1, 11)) + list(range(20, 29)),
+                'ns': list(range(1, 3)) + list(range(23, 29)),
                 'nr': range(16, 29),
                 'NG': range(23, 29),
                 'NC': range(16, 29),
-                'tke': [20, 21, 22, 25],
                 'omega': range(23, 28),
             }
 
             dic_var_levels_exclude_targets = { \
                 'qc': range(16, 29),
                 'qr': range(16, 29),
-                'qi': list(range(1, 11)) + list(range(21, 29)),
+                'qi': list(range(1, 11)) + list(range(20, 29)),
                 'qs': range(23, 29),
                 'qg': range(23, 29),
-                'ni': list(range(1, 11)) + list(range(21, 29)),
-                'ns': range(23, 29),
+                'ni': list(range(1, 11)) + list(range(20, 29)),
+                'ns': list(range(1, 3)) + list(range(23, 29)),
                 'nr': range(16, 29),
                 'NG': range(23, 29),
-                'NC': range(16, 29),
+                'NC': range(16, 29)
             }
 
     else:
@@ -337,8 +338,8 @@ def get_dffull_from_npcol_k(np_col_k, all_cols, k_inicial, k_final, dic_var_levs
 # versão atual que grava primeiro por variavel depois por nivel, e remove niveis de LSRAIN e LSSNOW
 def set_default_values(df_all_cols, k_inicial, k_final, dic_var_levs_exclude=None, dic_defatult_values=None):
     dic_var_levs_exclude_ok = { \
-        'LSRAIN': range(2, 29),
-        'LSSNOW': range(2, 29)
+        'LSRAIN': range(2, k_max),
+        'LSSNOW': range(2, k_max)
     }
     if dic_var_levs_exclude is not None:
         dic_var_levs_exclude_ok.update(dic_var_levs_exclude)
@@ -359,7 +360,31 @@ def set_default_values(df_all_cols, k_inicial, k_final, dic_var_levs_exclude=Non
 
 
 def get_all_minmax_values():
-    if k_max == 28:
+
+    if k_max == 64:
+
+        all_minmax_values = {'k': [-11.600000000000001, 76.6], 'sl': [-0.19928322752178643, 1.1967689676659643],
+         'Tc': [18.113996373799985, 373.6123756357], 'qv': [-0.0035332086576800007, 0.02119925195308],
+         'qc': [-0.00019144478858000002, 0.00114866873148], 'qr': [-0.000289795443728, 0.0017387726623679998],
+         'qi': [-2.4782610170000003e-05, 0.00014869566102], 'qs': [-0.000438658347798, 0.0026319500867879996],
+         'qg': [-9.8722767228e-05, 0.0005923366033679999], 'ni': [-238125.60474200002, 1428753.6284520002],
+         'ns': [-559478.0950620001, 3356868.5703720003], 'nr': [-923696.847572, 5542181.0854319995],
+         'NG': [-7854.751731060001, 47128.51038636], 'NC': [-15902188.53006, 95413131.18035999],
+         'tke': [-59.964000000000006, 359.994], 'omega': [-2.2730674705028, 0.9723025949368]}
+
+        # TODO
+         # 'LSRAIN': [-5.45175367804e-05, 0.0003271052206824], 'LSSNOW': [-1.684981073452e-11, 1.0109886440712e-10]}
+
+    elif k_max == 28:
+
+        # TODO FOR TKE
+        # 2014 + 2015 - MLP + LSTM  - borde 0
+        # {'k': [1, 28], 'sl': [0.00152250216953, 0.994963901883], 'Tc': [63.6765959722, 311.233042513],
+        #  'qv': [1.53669990465e-06, 0.0173136957911], 'qc': [0.0, 0.000740654592221], 'qr': [0.0, 0.00080807454392],
+        #  'qi': [0.0, 0.000116620887624], 'qs': [0.0, 0.00185267055718], 'qg': [0.0, 0.000135966743237],
+        #  'ni': [0.0, 1158020.15791], 'ns': [0.0, 2973056.2935], 'nr': [0.0, 2951432.68921], 'NG': [0.0, 5779.33190043],
+        #  'NC': [0.0, 57278488.654], 'kzh': [0.03, 300.0], 'omega': [-1.80612289269, 0.504465053754]}
+
         # 2014 + 2015 - MLP + LSTM
         all_minmax_values = {'k': [-4.4, 33.4],
                              'sl': [-0.197165777773164, 1.193652181825694],
@@ -429,28 +454,22 @@ def get_arr_input_windowed(b, window):
     return w
 
 
-# getting some values for test
-# df_input_bam1d = pd.read_csv('/media/denis/dados/_COM_BACKUP/NN_BAM1D/bam1d_data/IOP2014__CRD_RRTMG_dt_360_NONUDGING_FIX_LEVELS_ABOVE990/hug_morr_inputs.csv', sep=",")
-# df_input_bam1d.head(k_max).to_csv('./BAM1D_HUMO_in.csv')
-# df_output_bam1d = pd.read_csv('/media/denis/dados/_COM_BACKUP/NN_BAM1D/bam1d_data/IOP2014__CRD_RRTMG_dt_360_NONUDGING_FIX_LEVELS_ABOVE990/hug_morr_outputs.csv', sep=",")
-# df_output_bam1d.head(k_max).to_csv('./BAM1D_HUMO_out.csv')
-# exit(0)
-
 
 # Begin program
 #
 
 # parameters ============================
+modelType = 'MLP_LSTM_LS'
 debug_one_line_mode = False
-k_max = 28
+k_max = 64
 is_col_k = False
-timesteps = 5
+is_PCA = True
+timesteps = 5  # use same as bam1d, even with MLP_LSTM_LS or MLP_colk_LSTM_LS with 1 timestep
+
 
 pd.set_option("display.max_rows", None, "display.max_columns", None)
 # evita o erro A value is trying to be set on a copy of a slice from a DataFrame em
 pd.options.mode.chained_assignment = None
-
-
 if is_col_k:
     lev_str = 'Lev'
 else:
@@ -469,7 +488,7 @@ all_out_columns = ["k", "Tc", "qv", "qc", "qr", "qi", "qs", "qg", "ni", "ns", "n
 # modelType = 'LSTM'
 # lines_per_exec = (k_max * timesteps)
 # MODEL MLP_NOLS + LSTM_LS
-modelType = 'MLP_LSTM_LS'
+
 lines_per_exec = (k_max * timesteps)
 
 s1 = time.time()
@@ -481,15 +500,19 @@ all_LSTM_columns = None
 all_MLP_columns_inp = None
 all_MLP_columns_out = None
 
-if modelType == 'MLP_LSTM_LS':
-    model_MLP = load_model(f'./MLP.h5')
+if modelType == 'MLP_LSTM_LS' or modelType == 'MLP_colk_LSTM_LS':
+    model_MLP = load_model(f'./MLP_LS.h5')
     print(model_MLP.summary())
-    model_LSTM = load_model(f'./LSTM.h5')
+    model_LSTM = load_model(f'./LSTM_LS.h5')
     print(model_LSTM.summary())
-    all_MLP_columns_inp = ["sl", "Tc", "qv", "qc", "qr", "qi", "qs", "qg", "ni", "ns", "nr", "NG", "NC", "kzh", "omega"]
+    if is_PCA:
+        # later reload the pickle file
+        pca_reload = pk.load(open("pca.pkl", 'rb'))
+
+    all_MLP_columns_inp = ["Tc", "qv", "qc", "qr", "qi", "qs", "qg", "ni", "ns", "nr", "NG", "NC", "sl", "tke", "omega"]
     all_MLP_columns_out = ["Tc", "qv", "qc", "qr", "qi", "qs", "qg", "ni", "ns", "nr", "NG", "NC"]
     all_LSTM_columns = ["LSRAIN", "LSSNOW"]
-else:
+else:  # 'MLP_colk', 'MLP_T', 'CNN_T', 'LSTM'
     model = load_model(f'./{modelType}.h5')
     print(model.summary())
 
@@ -523,12 +546,11 @@ while True:
         try:
             # time.sleep(1)
             num_lines = sum(1 for line in open(in_filename))
-            print('lines', num_lines)
             # time.sleep(0.01)
             # se existe arquivo e tem linhas suficientes
             if num_lines > lines_per_exec:  #TODO deveria ser == lines_per_exec + 1 ?
                 df_input_bam1d = pd.read_csv(in_filename, sep=",")
-                print('shape=', df_input_bam1d.shape[0])
+                print('shape=', df_input_bam1d.shape)
                 notok = df_input_bam1d.shape[0] < lines_per_exec
 
             # TODO - se for usar para comparar, ler do output total
@@ -543,33 +565,34 @@ while True:
     # df_output_bam1d = preprocess_targets(df_output_bam1d)
 
     # print('Input FROM BAM \n', df_input_bam1d.shape)
+    print('Input denorm \n', df_input_bam1d)
     df_input_bam1d_norm = normalize_linear_scale(df_input_bam1d, all_minmax_values)
-    print('Input norm \n', df_input_bam1d_norm)
+    # print('Input norm \n', df_input_bam1d_norm)
 
-    if is_col_k:
-        df_input_bam1d_norm = get_df_col_k(df_input_bam1d_norm, 1, k_max, dic_var_levels_exclude_examples)
-    # print('Input norm exclude levs \n', df_input_bam1d_norm.shape)
-
-    if modelType == 'MLP':
+    if modelType == 'MLP_colk':
+        if is_col_k:
+            df_input_bam1d_norm = get_df_col_k(df_input_bam1d_norm, 1, k_max, dic_var_levels_exclude_examples)
+            # print('Input norm exclude levs \n', df_input_bam1d_norm.shape)
         np_input_bam1d_norm = df_input_bam1d_norm.to_numpy()
-    elif modelType == 'MLP_LSTM_LS':
-        df_input_bam1d_norm_MLP = df_input_bam1d_norm[all_MLP_columns_inp]
-        np_temp = df_input_bam1d_norm_MLP.to_numpy()
-        # nesse caso de MLP só deve pegar o último timestep (kmax ultimos)
-        np_input_bam1d_norm_MLP = np_temp[-k_max:, :]
 
-        # df_input_bam1d_norm_LSTM_temp = df_input_bam1d_norm[all_LSTM_columns]
-        # df_input_bam1d_norm_LSTM = pd.DataFrame(columns = all_LSTM_columns)
-        # # value repeated ecah k
-        # for w in range(timesteps):
-        #     df_input_bam1d_norm_LSTM = df_input_bam1d_norm_LSTM.append( df_input_bam1d_norm_LSTM_temp.iloc[(w * k_max) + k_max - 1, :], ignore_index=True )
-        # np_input_bam1d_norm_LSTM = df_input_bam1d_norm_LSTM.to_numpy()
+    elif modelType == 'MLP_colk_LSTM_LS' or modelType == 'MLP_LSTM_LS':
+
+        if is_col_k:
+            df_input_bam1d_norm_MLP = df_input_bam1d_norm[['k'] + all_MLP_columns_inp]
+            df_input_bam1d_norm_MLP = get_df_col_k(df_input_bam1d_norm_MLP, 1, k_max, dic_var_levels_exclude_examples)
+        else:
+            df_input_bam1d_norm_MLP = df_input_bam1d_norm[all_MLP_columns_inp]
+
+        if is_PCA:
+            np_input_bam1d_norm_MLP = pca_reload.transform(df_input_bam1d_norm_MLP)
+        else:
+            np_input_bam1d_norm_MLP = df_input_bam1d_norm_MLP.to_numpy()
 
         df_input_bam1d_norm_LSTM_temp = df_input_bam1d_norm[all_LSTM_columns]
-        df_input_bam1d_norm_LSTM = pd.DataFrame(columns = all_LSTM_columns)
+        df_input_bam1d_norm_LSTM = pd.DataFrame(columns=all_LSTM_columns)
         # value repeated ecah k
         for w in range(timesteps):
-            df_input_bam1d_norm_LSTM = df_input_bam1d_norm_LSTM.append( df_input_bam1d_norm_LSTM_temp.iloc[(w * k_max) + k_max - 1, :], ignore_index=True)
+            df_input_bam1d_norm_LSTM = df_input_bam1d_norm_LSTM.append(df_input_bam1d_norm_LSTM_temp.iloc[(w * k_max) + k_max - 1, :], ignore_index=True)
 
         np_input_bam1d_norm_LSTM_temp = df_input_bam1d_norm_LSTM.to_numpy()
         np_input_bam1d_norm_LSTM = get_arr_input_windowed(np_input_bam1d_norm_LSTM_temp, timesteps)
@@ -585,30 +608,37 @@ while True:
         np_input_bam1d_norm = np_input_bam1d_norm[0:new_samples * timesteps, :]
         np_input_bam1d_norm = np_input_bam1d_norm.reshape(new_samples, timesteps, np_input_bam1d_norm.shape[1])
 
-    # print('Input norm exclude levs Numpy \n', np_input_bam1d_norm)
-    # s3 = time.time()
-    # print("Time to Prepare: ", s3-s2)
-
-    # print('Input for NN \n', np_input_bam1d_norm)
-    # prediction
-    if modelType == 'MLP_LSTM_LS':
+    # Preditction
+    #
+    if modelType == 'MLP_colk_LSTM_LS' or modelType == 'MLP_LSTM_LS':
 
         # MLP part
         np_predict_MLP = model_MLP.predict(np_input_bam1d_norm_MLP, use_multiprocessing=True)
-        df_predict_bam1d_norm_MLP = pd.DataFrame(np_predict_MLP, columns=all_MLP_columns_out)
-        df_predict_bam1d_MLP = denormalize_linear_scale(df_predict_bam1d_norm_MLP, all_minmax_values,
-                                                             is_col_k=is_col_k)
+        if is_col_k:
+            df_predict_bam1d_norm_MLP = get_dffull_from_npcol_k(np_predict_MLP[0], all_MLP_columns_out, 1, k_max,
+                                                            dic_var_levs_exclude=dic_var_levels_exclude_targets,
+                                                            dic_defatult_values=get_dic_default_values())
+        else:
+            df_predict_bam1d_norm_MLP = pd.DataFrame(np_predict_MLP, columns=all_MLP_columns_out)
 
+        # print('MLP input norm \n', np_input_bam1d_norm_MLP)
+        # print('MLP predict norm \n', np_predict_MLP)
+
+        df_predict_bam1d_MLP = denormalize_linear_scale(df_predict_bam1d_norm_MLP, all_minmax_values, is_col_k=is_col_k)
+        # all predicted denormalized has minimun of zero
+        df_predict_bam1d_MLP.clip(lower=0.0, inplace=True)
 
         # LSTM part
         np_predict_LSTM = model_LSTM.predict(np_input_bam1d_norm_LSTM, use_multiprocessing=True)
+        print('LSTM input norm \n', np_input_bam1d_norm_LSTM)
+        print('LSTM predict norm \n', np_predict_LSTM)
         np_predict_LSTM = np.repeat(np_predict_LSTM, k_max, axis=0)
         df_predict_bam1d_norm_LSTM = pd.DataFrame(np_predict_LSTM, columns=all_LSTM_columns)
         df_predict_bam1d_LSTM = denormalize_linear_scale(df_predict_bam1d_norm_LSTM, all_minmax_values,
                                                               is_col_k=is_col_k)
 
         df_predict_bam1d = df_predict_bam1d_MLP.join(df_predict_bam1d_LSTM)
-        print('Dataframe prediction denorm \n', df_predict_bam1d)
+        print('MLP + LS prediction denorm \n', df_predict_bam1d)
         df_predict_bam1d.to_csv(out_filename, header=False, index=False)
 
         # print('Dataframe actual \n', df_output_bam1d)

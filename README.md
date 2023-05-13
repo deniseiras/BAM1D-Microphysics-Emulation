@@ -57,8 +57,6 @@ L model
 L run                                              -  scripts for compiling and running bam1d  
 ```
 
-The **bold** text in highlights the main 3 files that do the emulation
-
 ---
 
 TODO:

@@ -1,0 +1,65 @@
+TOTAL PRECIPITATION                         1  121    0
+CONVECTIVE PRECIPITATION                    1  121    0
+PRECIPITABLE WATER                          1  110    0
+LIQUID MIXING RATIO KG/KG                   2    0    0
+ICE MIXING RATIO KG/KG                      2    0    0
+RUNOFF                                      1  121    0
+SNOWFALL                                    1  121    0
+SENSIBLE HEAT FLUX FROM SURFACE             1  170    0
+LATENT HEAT FLUX FROM SURFACE               1  170    0
+SURFACE ZONAL WIND STRESS                   1  130    0
+SURFACE MERIDIONAL WIND STRESS              1  130    0
+OUTGOING LONG WAVE AT TOP                   1  170    0
+OUTGOING LONG WAVE AT TOP (CLEAR)           1  170    0
+DOWNWARD SHORT WAVE AT GROUND               1  170    0
+DOWNWARD SHORT WAVE AT GROUND (CLEAR)       1  170    0
+UPWARD SHORT WAVE AT TOP                    1  170    0
+UPWARD SHORT WAVE AT TOP (CLEAR)            1  170    0
+UPWARD SHORT WAVE AT GROUND                 1  170    0
+UPWARD SHORT WAVE AT GROUND (CLEAR)         1  170    0
+NET LONG WAVE AT BOTTOM                     1  170    0
+NET LONG WAVE AT BOTTOM (CLEAR)             1  170    0
+SHORT WAVE ABSORBED BY EARTH/ATMOSPHERE     1  170    0
+SHORT WV ABSRBD BY EARTH/ATMOS (CLEAR)      1  170    0
+SHORT WAVE ABSORBED AT GROUND               1  170    0
+SHORT WAVE ABSORBED AT GROUND (CLEAR)       1  170    0
+INCIDENT SHORT WAVE FLUX                    1  170    0
+LONG WAVE RADIATIVE HEATING                 2   70    0
+SHORT WAVE RADIATIVE HEATING                2   70    0
+VERTICAL DIFFUSION HEATING                  2   70    0
+VERTICAL DIFF. MOISTURE SOURCE              2   50    0
+CONVECTIVE LATENT HEATING                   2   70    0
+CONVECTIVE MOISTURE SOURCE                  2   50    0
+LARGE SCALE LATENT HEATING                  2   70    0
+LARGE SCALE MOISTURE SOURCE                 2   50    0
+SHALLOW CONVECTIVE HEATING                  2   70    0
+SHALLOW CONV. MOISTURE SOURCE               2   50    0
+TURBULENT KINETIC ENERGY                    2   60    0
+CLOUD COVER                                 1    0    0
+VERTICAL DIST TOTAL CLOUD COVER             2    0    0
+INVERSION CLOUD                             2    0    0
+CONVECTIVE CLOUD                            2    0    0
+SUPERSATURATION CLOUD                       2    0    0
+SHALLOW CONVECTIVE CLOUD                    2    0    0
+PLANETARY BOUNDARY LAYER HEIGHT             1   10    0
+CONVECTIVE AVAIL. POT.ENERGY                1  180    0
+CONVECTIVE INHIB. ENERGY                    1  180    0
+EQUIVALENT POTENTIAL TEMP                   2    0    0
+DEEP UPDRAFT MASS FLUX                      2    0    0
+DEEP DOWNDRAFT MASS FLUX                    2    0    0
+DEEP DETRAINMENT                            2    0    0
+DEEP ENTRAINMENT                            2    0    0
+TEMPERATURE FORCING                         2    0    0
+MOISTURE FORCING                            2    0    0
+PRESC. SENSIBLE HEAT FLUX FROM SURFACE      1  170    0
+PRESC. LATENT HEAT FLUX FROM SURFACE        1  170    0
+PRESC. SURFACE TEMPERATURE                  1    0    0
+DOWNWARD LONG WAVE AT BOTTOM                1  170    0
+UPWARD LONG WAVE AT BOTTOM                  1  170    0
+TOT LEAF AREA INDEX FOR THE UPPER CANOPY    1    0    0
+TOT LEAF AREA INDEX FOR THE LOWER CANOPY    1    0    0
+FRAC OVERALL AREA COVER BY UPPER CANOPY     1    1    0
+VISIBLE BEAM DOWNWARD SOLAR FLUX            1  170    0
+VISIBLE DIFFUSE DOWNWARD SOLAR FLUX         1  170    0
+NEAR IR BEAM DOWNWARD SOLAR FLUX            1  170    0
+NEAR IR DIFFUSE DOWNWARD SOLAR FLUX         1  170    0

@@ -1,0 +1,1727 @@
+  SUBROUTINE irrad ( &
+       m       , & ! INTEGER      , INTENT(in   ) :: m
+       np      , & ! INTEGER      , INTENT(in   ) :: np
+       pl      , & ! REAL(KIND=r8), INTENT(in   ) :: pl    (m,np+1) 
+       ta      , & ! REAL(KIND=r8), INTENT(in   ) :: ta    (m,np)
+       wa      , & ! REAL(KIND=r8), INTENT(in   ) :: wa    (m,np)
+       oa      , & ! REAL(KIND=r8), INTENT(in   ) :: oa    (m,np)
+       tb      , & ! REAL(KIND=r8), INTENT(in   ) :: tb    (m)
+       co2     , & ! REAL(KIND=r8), INTENT(in   ) :: co2
+       taucl   , & ! REAL(KIND=r8), INTENT(in   ) :: taucl (m,np,3) 
+       fcld    , & ! REAL(KIND=r8), INTENT(in   ) :: fcld  (m,np)
+       ict     , & ! INTEGER      , INTENT(in   ) :: ict   (m)
+       icb     , & ! INTEGER      , INTENT(in   ) :: icb   (m)
+       ns      , & ! INTEGER      , INTENT(in   ) :: ns
+       fs      , & ! REAL(KIND=r8), INTENT(in   ) :: fs    (m,ns)
+       tg      , & ! REAL(KIND=r8), INTENT(in   ) :: tg    (m,ns)
+       eg      , & ! REAL(KIND=r8), INTENT(in   ) :: eg    (m,ns,10)
+       flx     , & ! REAL(KIND=r8), INTENT(out  ) :: flx   (m,np+1)
+       flc     , & ! REAL(KIND=r8), INTENT(out  ) :: flc   (m,np+1)
+       sfcem     ) ! REAL(KIND=r8), INTENT(out  ) :: sfcem (m)
+    !ctar      *                  high,trace,n2o,ch4,cfc11,cfc12,cfc22,
+    !ctar      *                  vege,ns,fs,tg,eg,tv,ev,rv,
+    !ctar      *                  overcast,cldwater,cwc,taucl,fcld,ict,icb,
+    !ctar      *                  aerosol,na,taual,ssaal,asyal,
+    !ctar      *                  flx,flc,dfdts,sfcem)
+
+    !c*********************************************************************
+
+    !c   THE EQUATION NUMBERS noted in this code follows the latest  
+    !c    version (May 2003) of the NASA Tech. Memo. (2001), which can 
+    !c    be accessed at ftp://climate.gsfc.nasa.gov/pub/chou/clirad_lw/
+
+    !c*********************************************************************
+
+    !c  CHANGE IN MAY 2003
+
+    !c    The effective size of ice particles is replaced changed to the  
+    !c    effective radius, and the definition of the effective radius 
+    !c    follows that given in Chou, Lee and Yang (JGR, 2002).
+    !c    The reff is no longer an input parameter.
+
+    !c  CHANGE IN DECEMBER 2002
+
+    !c    Do-loop 1500 is created inside the do-loop 1000 to compute 
+    !c    the upward and downward emission of a layer
+
+    !c   CHANGE IN JULY 2002
+
+    !c    The effective Planck functions of a layer are separately
+    !c    computed for the upward and downward emission (bu and bd).
+    !c    For a optically thick cloud layer, the upward emission will be
+    !c    at the cloud top temperature, and the downward emission will
+    !c    at the cloud base temperature.
+
+    !c   RECENT CHANGES:
+    !c
+    !c    Subroutines for planck functions
+    !c    Subroutines for cloud overlapping
+    !c    Eliminate "rflx" and "rflc". Fold the flux calculations in
+    !c      Band 10 to that of the other bands.
+    !c    Return the calculations when ibn=10 and trace=.false.
+    !c    The number of aerosol types is allowed to be more than one.
+    !c    Include sub-grid surface variability and vegetation canopy.
+    !c    Include the CKD continuum absorption coefficient as an option.
+    !c    
+    !c********************************************************************
+
+    !c Ice and liquid cloud particles are allowed to co-exist in each of the
+    !c  np layers. 
+    !c
+    !c The maximum-random assumption is applied for cloud overlapping. 
+    !c  Clouds are grouped into high, middle, and low clouds separated 
+    !c  by the level indices ict and icb.  Within each of the three groups,
+    !c  clouds are assumed maximally overlapped.  Clouds among the three 
+    !c  groups are assumed randomly overlapped. The indices ict and icb 
+    !c  correspond approximately to the 400 mb and 700 mb levels.
+    !c
+    !c Various types of aerosols are allowed to be in any of the np layers. 
+    !c  Aerosol optical properties can be specified as functions of height  
+    !c  and spectral band.
+    !c
+    !c The surface can be divided into a number of sub-regions either with or 
+    !c  without vegetation cover. Reflectivity and emissivity can be 
+    !c  specified for each sub-region.
+    !c
+    !c There are options for computing fluxes:
+    !c
+    !c   If high = .true., transmission functions in the co2, o3, and the
+    !c   three water vapor bands with strong absorption are computed using
+    !c   table look-up.  cooling rates are computed accurately from the
+    !c   surface up to 0.01 mb.
+    !c   If high = .false., transmission functions are computed using the
+    !c   k-distribution method with linear pressure scaling for all spectral
+    !c   bands except Band 5.  cooling rates are not accurately calculated 
+    !c   for pressures less than 10 mb. the computation is faster with
+    !c   high=.false. than with high=.true.
+    !c
+    !c   If trace = .true., absorption due to n2o, ch4, cfcs, and the 
+    !c   two minor co2 bands in the window region is included.
+    !c   Otherwise, absorption in those minor bands is neglected.
+    !c
+    !c   If vege=.true., a vegetation layer is added, and the emission and 
+    !c   reflectivity are computed for the ground+vegetation surface.
+    !c   Otherwise, only ground and ocean surfaces are considered.
+    !c
+    !c   If overcast=.true., the layer cloud cover is either 0 or 1.
+    !c   If overcast=.false., the cloud cover can be anywhere between 0 and 1.
+    !c   Computation is faster for the .true. option than the .false. option.
+    !c
+    !c   If cldwater=.true., taucl is computed from cwc and reff as a
+    !c   function of height and spectral band. 
+    !c   If cldwater=.false., taucl must be given as input to the radiation
+    !c   routine. For this case, taucl is independent of spectral band.
+    !c
+    !c   If aerosol = .true., aerosols are included in calculating transmission
+    !c   functions. Otherwise, aerosols are not included.
+    !c   
+    !c
+    !c The IR spectrum is divided into nine bands:
+    !c   
+    !c   band     wavenumber (/cm)   absorber
+    !c
+    !c    1           0 - 340           h2o
+    !c    2         340 - 540           h2o
+    !c    3         540 - 800       h2o,cont,co2
+    !c    4         800 - 980       h2o,cont
+    !c                              co2,f11,f12,f22
+    !c    5         980 - 1100      h2o,cont,o3
+    !c                              co2,f11
+    !c    6        1100 - 1215      h2o,cont
+    !c                              n2o,ch4,f12,f22
+    !c    7        1215 - 1380      h2o,cont
+    !c                              n2o,ch4
+    !c    8        1380 - 1900          h2o
+    !c    9        1900 - 3000          h2o
+    !c
+    !c In addition, a narrow band in the 17 micrometer region (Band 10) is added
+    !c    to compute flux reduction due to n2o
+    !c
+    !c    10        540 - 620       h2o,cont,co2,n2o
+    !c
+    !c Band 3 (540-800/cm) is further divided into 3 sub-bands :
+    !c
+    !c   subband   wavenumber (/cm)
+    !c
+    !c    3a        540 - 620
+    !c    3b        620 - 720
+    !c    3c        720 - 800
+    !c
+    !c---- Input parameters                               units    size
+    !c
+    !c   number of soundings (m)                            --      1
+    !c   number of atmospheric layers (np)                  --      1
+    !c   level pressure (pl)                               mb      m*(np+1)
+    !c   layer temperature (ta)                            k       m*np
+    !c   layer specific humidity (wa)                      g/g     m*np
+    !c   layer ozone mixing ratio by mass (oa)             g/g     m*np
+    !c   surface air temperature (tb)                      k        m
+    !c   co2 mixing ratio by volume (co2)                  pppv     1
+    !c   option (high) (see explanation above)              --      1
+    !c   option (trace) (see explanation above)             --      1
+    !c   n2o mixing ratio by volume (n2o)                  pppv     1
+    !c   ch4 mixing ratio by volume (ch4)                  pppv     1
+    !c   cfc11 mixing ratio by volume (cfc11)              pppv     1
+    !c   cfc12 mixing ratio by volume (cfc12)              pppv     1
+    !c   cfc22 mixing ratio by volume (cfc22)              pppv     1
+    !c   option for including vegetation cover (vege)       --      1
+    !c   number of sub-grid surface types (ns=2)              --    m
+    !c   fractional cover of sub-grid regions (fs)       fraction  m*ns
+    !c   land or ocean surface temperature (tg)            k       m*ns
+    !c   land or ocean surface emissivity (eg)           fraction  m*ns*9
+    !c   vegetation temperature (tv)                       k       m*ns
+    !c   vegetation emissivity (ev)                      fraction  m*ns*9
+    !c   vegetation reflectivity (rv)                    fraction  m*ns*9
+    !c   option for cloud fractional cover                  --      1
+    !c      (overcast)   (see explanation above)
+    !c   option for cloud optical thickness                 --      1
+    !c      (cldwater)   (see explanation above)
+    !c   cloud water mixing ratio (cwc)                   gm/gm   m*np*3
+    !c       index 1 for ice particles
+    !c       index 2 for liquid drops
+    !c       index 3 for rain drops
+    !c   cloud optical thickness (taucl)                    --    m*np*3
+    !c       index 1 for ice particles
+    !c       index 2 for liquid drops
+    !c       index 3 for rain drops
+    !c   cloud amount (fcld)                             fraction  m*np
+    !c   level index separating high and middle             --      1
+    !c       clouds (ict)
+    !c   level index separating middle and low              --      1
+    !c       clouds (icb)
+    !c   option for including aerosols (aerosol)            --      1
+    !c   number of aerosol types (na)                       --      1
+    !c   aerosol optical thickness (taual)                  --   m*np*10*na
+    !c   aerosol single-scattering albedo (ssaal)           --   m*np*10*na
+    !c   aerosol asymmetry factor (asyal)                   --   m*np*10*na
+    !c
+    !c---- output parameters
+    !c
+    !c   net downward flux, all-sky   (flx)             w/m**2  m*(np+1)
+    !c   net downward flux, clear-sky (flc)             w/m**2  m*(np+1)
+    !c   sensitivity of net downward flux  
+    !c       to surface temperature (dfdts)            w/m**2/k m*(np+1)
+    !c   emission by the surface (sfcem)                w/m**2     m
+    !c
+    !c Data used in table look-up for transmittance calculations:
+    !c
+    !c   c1 , c2, c3: for co2 (band 3)
+    !c   o1 , o2, o3: for  o3 (band 5)
+    !c   h11,h12,h13: for h2o (band 1)
+    !c   h21,h22,h23: for h2o (band 2)
+    !c   h81,h82,h83: for h2o (band 8)
+    !c 
+    !c Notes: 
+    !c
+    !c   (1) Scattering is parameterized for clouds and aerosols.
+    !c   (2) Diffuse cloud and aerosol transmissions are computed
+    !c       from exp(-1.66*tau).
+    !c   (3) If there are no clouds, flx=flc.
+    !c   (4) plevel(1) is the pressure at the top of the model atmosphere,
+    !c        and plevel(np+1) is the surface pressure.
+    !c   (5) Downward flux is positive and upward flux is negative.
+    !c   (6) sfcem and dfdts are negative because upward flux is defined as negative.
+    !c   (7) For questions and coding errors, please contact Ming-Dah Chou,
+    !c       Code 913, NASA/Goddard Space Flight Center, Greenbelt, MD 20771.
+    !c       Phone: 301-614-6192, Fax: 301-614-6307,
+    !c       e-mail: chou@climate.gsfc.nasa.gov
+    !c
+    !c***************************************************************************
+
+    IMPLICIT NONE
+
+    !tar
+    !tarINTEGER, PARAMETER :: r8 = SELECTED_REAL_KIND(15) ! Kind for 64-bits Real Numbers
+    !tar
+
+    !ctar---- input parameters ------
+
+    INTEGER      , INTENT(in   ) :: m
+    INTEGER      , INTENT(in   ) :: np
+    INTEGER      , INTENT(in   ) :: ict(m)
+    INTEGER      , INTENT(in   ) :: icb(m)
+    INTEGER      , INTENT(in   ) :: ns
+
+    REAL(KIND=r8), INTENT(in) :: pl    (m,np+1) 
+    REAL(KIND=r8), INTENT(in) :: ta    (m,np)
+    REAL(KIND=r8), INTENT(in) :: wa    (m,np)
+    REAL(KIND=r8), INTENT(in) :: oa    (m,np)
+    REAL(KIND=r8), INTENT(in) :: tb    (m)
+    REAL(KIND=r8), INTENT(in) :: co2
+    REAL(KIND=r8), INTENT(in) :: fs    (m,ns)
+    REAL(KIND=r8), INTENT(in) :: tg    (m,ns)
+    REAL(KIND=r8), INTENT(in) :: eg    (m,ns,10)
+    REAL(KIND=r8), INTENT(in) :: taucl (m,np,3) 
+    REAL(KIND=r8), INTENT(in) :: fcld  (m,np)
+
+    !ctar---- output parameters ------
+
+    !ctar      real dfdts(m,np+1)
+
+    REAL(KIND=r8), DIMENSION(m,np+1):: dfdts
+
+    REAL(KIND=r8), INTENT(out) :: flx (m,np+1)
+    REAL(KIND=r8), INTENT(out) :: flc (m,np+1)
+    REAL(KIND=r8), INTENT(out) :: sfcem(m)
+
+
+    !ctar---- input parameters defined inside the subroutine ------
+
+    INTEGER, PARAMETER   :: na=1
+
+    REAL(KIND=r8), PARAMETER :: n2o = 0.28e-6_r8
+    REAL(KIND=r8), PARAMETER :: ch4 =1.75e-6_r8
+    REAL(KIND=r8), PARAMETER :: cfc11 = 0.3e-9_r8
+    REAL(KIND=r8), PARAMETER :: cfc12 = 0.5e-9_r8
+    REAL(KIND=r8), PARAMETER :: cfc22 = 0.2e-9_r8
+
+    !ctar ------------ not used at the moment-------------
+
+    REAL(KIND=r8), DIMENSION(m,ns) :: tv
+    REAL(KIND=r8), DIMENSION(m,ns,10) :: ev, rv   
+    REAL(KIND=r8), DIMENSION(m,np,3) :: cwc
+    REAL(KIND=r8), DIMENSION(m,np,10,na) :: taual, ssaal, asyal  
+
+    !ctar---- input parameters defined inside the subroutine ------
+
+    LOGICAL, PARAMETER  :: high = .FALSE. 
+    LOGICAL, PARAMETER  :: vege = .FALSE.
+    LOGICAL, PARAMETER  :: trace = .TRUE.
+    LOGICAL, PARAMETER  :: overcast = .FALSE. 
+    LOGICAL, PARAMETER  :: cldwater = .FALSE.
+    LOGICAL, PARAMETER  :: aerosol= .FALSE.
+
+    !c---- static data -----
+
+    REAL(KIND=r8), PARAMETER, DIMENSION(9) :: xkw = (/ & 
+         29.55_r8, 4.167e-1_r8, 1.328e-2_r8, 5.250e-4_r8, &
+         5.25e-4_r8, 9.369e-3_r8, 4.719e-2_r8, 1.320e-0_r8, 5.250e-4_r8 /)
+    REAL(KIND=r8), PARAMETER, DIMENSION(9) :: xke = (/ & 
+         0.0_r8,    271.0_r8,    25.00_r8,   16.8_r8, &
+         8.31_r8,   6.52_r8,    12.7_r8,    0.0_r8,  0.0_r8 /)
+    REAL(KIND=r8), PARAMETER, DIMENSION(9) :: aw = (/ & 
+         0.0021_r8, 0.0140_r8, 0.0167_r8, 0.0302_r8, &
+         0.0307_r8, 0.0195_r8, 0.0152_r8, 0.0008_r8, 0.0096_r8 /)
+    REAL(KIND=r8), PARAMETER, DIMENSION(9) :: bw = (/ & 
+         -1.01e-5_r8, 5.57e-5_r8, 8.54e-5_r8, 2.96e-4_r8, &
+         2.86e-4_r8, 1.108e-4_r8, 7.608e-5_r8, -3.52e-6_r8, 1.64e-5_r8 /)
+    REAL(KIND=r8), PARAMETER, DIMENSION(9) :: pm = (/ & 
+         1.0_r8, 1.0_r8, 1.0_r8, 1.0_r8, 1.0_r8, 0.77_r8, 0.5_r8, 1.0_r8, 1.0_r8 /)
+    REAL(KIND=r8), PARAMETER, DIMENSION(6,9) :: fkw =  RESHAPE(  &
+         SHAPE = (/ 6, 9 /), SOURCE = (/ & 
+         0.2747_r8,0.2717_r8,0.2752_r8,0.1177_r8,0.0352_r8,0.0255_r8, &
+         0.1521_r8,0.3974_r8,0.1778_r8,0.1826_r8,0.0374_r8,0.0527_r8, &
+         1.00_r8, 1.00_r8,1.00_r8,1.00_r8,1.00_r8,1.00_r8, &
+         0.4654_r8,0.2991_r8,0.1343_r8,0.0646_r8,0.0226_r8,0.0140_r8, &
+         0.5543_r8,0.2723_r8,0.1131_r8,0.0443_r8,0.0160_r8,0.0000_r8, &
+         0.5955_r8,0.2693_r8,0.0953_r8,0.0335_r8,0.0064_r8,0.0000_r8, &
+         0.1958_r8,0.3469_r8,0.3147_r8,0.1013_r8,0.0365_r8,0.0048_r8, &
+         0.0740_r8,0.1636_r8,0.4174_r8,0.1783_r8,0.1101_r8,0.0566_r8, &
+         0.1437_r8,0.2197_r8,0.3185_r8,0.2351_r8,0.0647_r8,0.0183_r8 /) )
+    REAL(KIND=r8), PARAMETER, DIMENSION(6,3) :: gkw = RESHAPE(  &
+         SHAPE = (/ 6, 3 /), SOURCE = (/ & 
+         0.1782_r8,0.0593_r8,0.0215_r8,0.0068_r8,0.0022_r8,0.0000_r8, &
+         0.0923_r8,0.1675_r8,0.0923_r8,0.0187_r8,0.0178_r8,0.0000_r8, &
+         0.0000_r8,0.1083_r8,0.1581_r8,0.0455_r8,0.0274_r8,0.0041_r8 /) )
+
+    REAL(KIND=r8), PARAMETER, DIMENSION(3,10) :: aib  = RESHAPE(  &
+         SHAPE = (/ 3, 10 /), SOURCE = (/ & 
+         -0.44171_r8,    0.61222_r8,   0.06465_r8, &
+         -0.13727_r8,    0.54102_r8,   0.28962_r8, &
+         -0.01878_r8,    1.19270_r8,   0.79080_r8, &
+         -0.01896_r8,    0.78955_r8,   0.69493_r8, &
+         -0.04788_r8,    0.69729_r8,   0.54492_r8, &
+         -0.02265_r8,    1.13370_r8,   0.76161_r8, &
+         -0.01038_r8,    1.46940_r8,   0.89045_r8, &
+         -0.00450_r8,    1.66240_r8,   0.95989_r8, &
+         -0.00044_r8,    2.01500_r8,   1.03750_r8, &
+         -0.02956_r8,    1.06430_r8,   0.71283_r8 /) ) 
+
+    REAL(KIND=r8), PARAMETER, DIMENSION(4,10) :: awb = RESHAPE(  &
+         SHAPE = (/ 4, 10 /), SOURCE = (/ & 
+         0.08641_r8,    0.01769_r8,    -1.5572e-3_r8,   3.4896e-5_r8, &
+         0.22027_r8,    0.00997_r8,    -1.8719e-3_r8,   5.3112e-5_r8, &
+         0.38074_r8,   -0.03027_r8,     1.0154e-3_r8,  -1.1849e-5_r8, &
+         0.15587_r8,    0.00371_r8,    -7.7705e-4_r8,   2.0547e-5_r8, &
+         0.05518_r8,    0.04544_r8,    -4.2067e-3_r8,   1.0184e-4_r8, &
+         0.12724_r8,    0.04751_r8,    -5.2037e-3_r8,   1.3711e-4_r8, &
+         0.30390_r8,    0.01656_r8,    -3.5271e-3_r8,   1.0828e-4_r8, &
+         0.63617_r8,   -0.06287_r8,     2.2350e-3_r8,  -2.3177e-5_r8, &
+         1.15470_r8,   -0.19282_r8,     1.2084e-2_r8,  -2.5612e-4_r8, &
+         0.34021_r8,   -0.02805_r8,     1.0654e-3_r8,  -1.5443e-5_r8 /) )
+    REAL(KIND=r8), PARAMETER, DIMENSION(4,10)  :: aiw = RESHAPE(  &
+         SHAPE = (/ 4, 10 /), SOURCE = (/ & 
+         0.17201_r8,    1.8814e-2_r8,  -3.5117e-4_r8,   2.1127e-6_r8, &
+         0.81470_r8,   -4.1989e-3_r8,   2.3152e-7_r8,   2.0992e-7_r8, &
+         0.54859_r8,   -7.4266e-4_r8,   1.2865e-5_r8,  -5.7092e-8_r8, &
+         0.39218_r8,    6.4180e-3_r8,  -1.1567e-4_r8,   6.9710e-7_r8, &
+         0.71773_r8,   -5.1754e-3_r8,   4.6658e-5_r8,  -1.2085e-7_r8, &
+         0.77345_r8,   -8.4966e-3_r8,   1.1451e-4_r8,  -5.5170e-7_r8, &
+         0.74975_r8,   -8.7083e-3_r8,   1.3367e-4_r8,  -7.1603e-7_r8, &
+         0.69011_r8,   -6.9766e-3_r8,   1.1674e-4_r8,  -6.6472e-7_r8, &
+         0.83963_r8,   -1.0347e-2_r8,   1.4651e-4_r8,  -7.5965e-7_r8, &
+         0.64860_r8,   -4.4142e-3_r8,   6.5458e-5_r8,  -3.2655e-7_r8 /) )
+    REAL(KIND=r8), PARAMETER, DIMENSION(4,10)  :: aww = RESHAPE(  &
+         SHAPE = (/ 4, 10 /), SOURCE = (/ & 
+         -7.8566e-2_r8,  8.0875e-2_r8,  -4.3403e-3_r8,   8.1341e-5_r8, &
+         -1.3384e-2_r8,  9.3134e-2_r8,  -6.0491e-3_r8,   1.3059e-4_r8, &
+         3.7096e-2_r8,  7.3211e-2_r8,  -4.4211e-3_r8,   9.2448e-5_r8, &
+         -3.7600e-3_r8,  9.3344e-2_r8,  -5.6561e-3_r8,   1.1387e-4_r8, &
+         0.40212_r8,    7.8083e-2_r8,  -5.9583e-3_r8,   1.2883e-4_r8, &
+         0.57928_r8,    5.9094e-2_r8,  -5.4425e-3_r8,   1.2725e-4_r8, &
+         0.68974_r8,    4.2334e-2_r8,  -4.9469e-3_r8,   1.2863e-4_r8, &
+         0.80122_r8,    9.4578e-3_r8,  -2.8508e-3_r8,   9.0078e-5_r8, &
+         1.02340_r8,   -2.6204e-2_r8,   4.2552e-4_r8,   3.2160e-6_r8, &
+         0.05092_r8,    7.5409e-2_r8,  -4.7305e-3_r8,   1.0121e-4_r8 /) )
+    REAL(KIND=r8), PARAMETER, DIMENSION(4,10)  :: aig = RESHAPE(  &
+         SHAPE = (/ 4, 10 /), SOURCE = (/ & 
+         0.57867_r8,    1.5592e-2_r8,  -2.6372e-4_r8,   1.5125e-6_r8, &
+         0.72259_r8,    4.7922e-3_r8,  -4.7164e-5_r8,   2.0400e-7_r8, &
+         0.76109_r8,    6.9922e-3_r8,  -1.0935e-4_r8,   5.9885e-7_r8, &
+         0.86934_r8,    4.2268e-3_r8,  -7.4085e-5_r8,   4.3547e-7_r8, &
+         0.89103_r8,    2.8482e-3_r8,  -3.9174e-5_r8,   2.0098e-7_r8, &
+         0.86325_r8,    3.2935e-3_r8,  -3.9872e-5_r8,   1.8015e-7_r8, &
+         0.85064_r8,    3.8505e-3_r8,  -4.9259e-5_r8,   2.3096e-7_r8, &
+         0.86945_r8,    3.7869e-3_r8,  -5.6525e-5_r8,   3.0016e-7_r8, &
+         0.80122_r8,    4.9086e-3_r8,  -5.8831e-5_r8,   2.6367e-7_r8, &
+         0.73290_r8,    7.3898e-3_r8,  -1.0515e-4_r8,   5.4034e-7_r8 /) )
+    REAL(KIND=r8), PARAMETER, DIMENSION(4,10)  :: awg = RESHAPE(  &
+         SHAPE = (/ 4, 10 /), SOURCE = (/ & 
+         -0.51930_r8,    0.20290_r8,    -1.1747e-2_r8,   2.3868e-4_r8, &
+         -0.22151_r8,    0.19708_r8,    -1.2462e-2_r8,   2.6646e-4_r8, &
+         0.14157_r8,    0.14705_r8,    -9.5802e-3_r8,   2.0819e-4_r8, &
+         0.41590_r8,    0.10482_r8,    -6.9118e-3_r8,   1.5115e-4_r8, &
+         0.55338_r8,    7.7016e-2_r8,  -5.2218e-3_r8,   1.1587e-4_r8, &
+         0.61384_r8,    6.4402e-2_r8,  -4.6241e-3_r8,   1.0746e-4_r8, &
+         0.67891_r8,    4.8698e-2_r8,  -3.7021e-3_r8,   9.1966e-5_r8, &
+         0.78169_r8,    2.0803e-2_r8,  -1.4749e-3_r8,   3.9362e-5_r8, &
+         0.93218_r8,   -3.3425e-2_r8,   2.9632e-3_r8,  -6.9362e-5_r8, &
+         0.01649_r8,    0.16561_r8,    -1.0723e-2_r8,   2.3220e-4_r8 /)  )
+    INTEGER, PARAMETER, DIMENSION(9)  :: mw = (/ & 
+         6,6,8,6,6,8,9,6,16 /)
+
+!   !c-----parameters defining the size of the pre-computed tables for
+!   !c     transmittance using table look-up.
+
+!   !c     "nx" is the number of intervals in pressure
+!   !c     "no" is the number of intervals in o3 amount
+!   !c     "nc" is the number of intervals in co2 amount
+!   !c     "nh" is the number of intervals in h2o amount
+
+!   INTEGER, PARAMETER   ::  nx=26   
+!   INTEGER, PARAMETER   ::  no=21
+!   INTEGER, PARAMETER   ::  nc=30
+!   INTEGER, PARAMETER   ::  nh=31
+
+!   REAL(KIND=r8), DIMENSION(nx,nc) :: c1, c2, c3  
+
+!   REAL(KIND=r8), DIMENSION(nx,no) :: o1, o2, o3 
+
+!   REAL(KIND=r8), DIMENSION(nx,nh) :: h11, h12, h13, h21,h22,h23, h81,h82,h83    
+
+
+    !c---- temporary arrays -----
+
+    REAL(KIND=r8), DIMENSION(m,np) :: pa, dt
+    REAL(KIND=r8), DIMENSION(m) :: tx, xlayer
+    REAL(KIND=r8), DIMENSION(m,np,3) :: reff
+
+    REAL(KIND=r8), DIMENSION(m) :: x1, x2,  x3
+
+    REAL(KIND=r8), DIMENSION(m,np) :: dh2o, dcont, dco2, do3 
+
+    REAL(KIND=r8), DIMENSION(m,np) :: dn2o, dch4
+
+    REAL(KIND=r8), DIMENSION(m,np) :: df11, df12, df22
+
+    REAL(KIND=r8), DIMENSION(m,6) :: th2o
+    REAL(KIND=r8), DIMENSION(m,3) :: tcon
+    REAL(KIND=r8), DIMENSION(m,6,2) :: tco2
+
+    REAL(KIND=r8), DIMENSION(m,4) :: tn2o   
+    REAL(KIND=r8), DIMENSION(m,4) :: tch4
+    REAL(KIND=r8), DIMENSION(m,6) :: tcom
+
+    REAL(KIND=r8), DIMENSION(m) :: tf11, tf12, tf22 
+
+    REAL(KIND=r8), DIMENSION(m,np,6) :: h2oexp
+    REAL(KIND=r8), DIMENSION(m,np,3) :: conexp   
+    REAL(KIND=r8), DIMENSION(m,np,6,2) :: co2exp
+
+    REAL(KIND=r8), DIMENSION(m,4) :: n2oexp(m,np,4)
+    REAL(KIND=r8), DIMENSION(m,4) :: ch4exp(m,np,4)
+    REAL(KIND=r8), DIMENSION(m,6) :: comexp(m,np,6)
+
+    REAL(KIND=r8), DIMENSION(m,np) :: f11exp, f12exp, f22exp
+
+    REAL(KIND=r8), DIMENSION(m,0:np+1) :: blayer
+    REAL(KIND=r8), DIMENSION(m,np+1) :: blevel
+
+    REAL(KIND=r8), DIMENSION(m,0:np+1) :: bd
+    REAL(KIND=r8), DIMENSION(m,0:np+1) :: bu
+
+    REAL(KIND=r8), DIMENSION(m) :: bs, dbs, rflxs
+
+    REAL(KIND=r8), DIMENSION(m,np) ::  dp   
+    REAL(KIND=r8), DIMENSION(m,np,3) :: cwp
+
+    REAL(KIND=r8), DIMENSION(m,np+1) :: trant
+    REAL(KIND=r8), DIMENSION(m) :: tranal(m)
+    REAL(KIND=r8), DIMENSION(m,np+1) :: transfc
+    REAL(KIND=r8), DIMENSION(m,np+1) :: trantcr
+
+    REAL(KIND=r8), DIMENSION(m,np+1) :: flxu, flxd, flcu, flcd 
+
+    REAL(KIND=r8), DIMENSION(m,np) :: taua, ssaa, asya, taerlyr   
+
+    INTEGER, DIMENSION(m)  :: it, im, ib
+
+    INTEGER, DIMENSION(m,np)  :: itx, imx, ibx 
+
+    REAL(KIND=r8), DIMENSION(m) :: cldhi, cldmd, cldlw 
+
+    REAL(KIND=r8), DIMENSION(m,np) :: tcldlyr
+    REAL(KIND=r8), DIMENSION(m,np+1) :: fclr
+
+    INTEGER  :: i,j,k,ibn,ik,iq,isb,k1,k2,ne
+
+    REAL(KIND=r8) :: x, xx, p1, dwe, dpe, a1, b1, fk1, a2, b2, fk2 
+
+    REAL(KIND=r8) :: yy
+
+    REAL(KIND=r8) :: w1, w2, w3, g1, g2, g3, ww, gg, ff, tauc 
+
+    LOGICAL :: oznbnd, co2bnd, h2otbl, conbnd, n2obnd 
+
+    LOGICAL :: ch4bnd, combnd, f11bnd , f12bnd, f22bnd, b10bnd 
+
+
+    !c-----coefficients for computing effective particle size following
+    !c     McFarquhar (QJRMS, 2000)
+
+    REAL(KIND=r8), PARAMETER, DIMENSION(5)  :: ai = (/ &
+         2.076_r8, 2.054_r8, 2.035_r8, 2.019_r8, 2.003_r8 /)
+    REAL(KIND=r8), PARAMETER, DIMENSION(5)  :: bi = (/ &
+         0.148_r8, 0.130_r8, 0.119_r8,    0.111_r8,    0.102_r8 /)
+    REAL(KIND=r8), PARAMETER, DIMENSION(5)  :: ci = (/ &
+         -0.0453_r8, -0.0491_r8, -0.0507_r8, -0.0517_r8, -0.0532_r8 /)
+    REAL(KIND=r8), PARAMETER, DIMENSION(5)  :: di = (/ &
+         -0.00686_r8, -0.00711_r8, -0.00716_r8, -0.00717_r8, -0.00725_r8 /)
+
+
+    !c-----xkw is the absorption coefficient for the first k-distribution
+    !c     interval due to water vapor line absorption (Table 4)
+    !c     Units are cm**2/g    
+
+    !ctar      data xkw / 29.55_r8  , 4.167e-1_r8, 1.328e-2_r8, 5.250e-4_r8, &
+    !ctar                5.25e-4_r8, 9.369e-3_r8, 4.719e-2_r8, 1.320e-0_r8, 5.250e-4_r8/
+
+    !c-----xke is the absorption coefficient for the first k-distribution
+    !c     function due to water vapor continuum absorption (Table 9).
+    !c     Units are cm**2/g
+
+    !c-----Roberts et al's continuum k data
+
+    !c     data xke /  0.00,   339.00,  27.40,   15.8, &
+    !c                9.40,   7.75,    7.70,    0.0,   0.0/
+
+    !c-----CKD (Version 2.3) continuum k data
+
+    !ctar      data xke /  0.0_r8,    271.0_r8,    25.00_r8,   16.8_r8, &
+    !ctar                 8.31_r8,   6.52_r8,    12.7_r8,    0.0_r8,  0.0_r8/
+
+    !c-----mw is the ratio between neighboring absorption coefficients
+    !c     for water vapor line absorption (Table 4).
+
+    !ctar       data mw /6,6,8,6,6,8,9,6,16/
+
+    !c-----aw and bw (Table 3) are the coefficients for temperature scaling
+    !c     for water vapor in Eq. (4.2).
+
+    !ctar      data aw/ 0.0021_r8, 0.0140_r8, 0.0167_r8, 0.0302_r8, &
+    !ctar              0.0307_r8, 0.0195_r8, 0.0152_r8, 0.0008_r8, 0.0096_r8/
+    !ctar      data bw/ -1.01e-5_r8, 5.57e-5_r8, 8.54e-5_r8, 2.96e-4_r8, &
+    !ctar               2.86e-4_r8, 1.108e-4_r8, 7.608e-5_r8, -3.52e-6_r8, 1.64e-5_r8/
+
+    !c-----pm is the pressure-scaling parameter for water vapor absorption
+    !c     Eq. (4.1) and Table 3.
+
+    !ctar      data pm/ 1.0_r8, 1.0_r8, 1.0_r8, 1.0_r8, 1.0_r8, 0.77_r8, 0.5_r8, 1.0_r8, 1.0_r8/
+
+    !c-----fkw is the planck-weighted k-distribution function due to h2o
+    !c     line absorption (Table 4).
+    !c     The k-distribution function for Band 3, fkw(*,3), 
+    !c     is not used (see the parameter gkw below).
+
+    !ctar      data fkw / 0.2747_r8,0.2717_r8,0.2752_r8,0.1177_r8,0.0352_r8,0.0255_r8, &
+    !ctar                0.1521_r8,0.3974_r8,0.1778_r8,0.1826_r8,0.0374_r8,0.0527_r8, &
+    !ctar                 6*1.00_r8, &
+    !ctar                 0.4654_r8,0.2991_r8,0.1343_r8,0.0646_r8,0.0226_r8,0.0140_r8, &
+    !ctar                 0.5543_r8,0.2723_r8,0.1131_r8,0.0443_r8,0.0160_r8,0.0000_r8, &
+    !ctar                 0.5955_r8,0.2693_r8,0.0953_r8,0.0335_r8,0.0064_r8,0.0000_r8, &
+    !ctar                 0.1958_r8,0.3469_r8,0.3147_r8,0.1013_r8,0.0365_r8,0.0048_r8, &
+    !ctar                 0.0740_r8,0.1636_r8,0.4174_r8,0.1783_r8,0.1101_r8,0.0566_r8, &
+    !ctar                 0.1437_r8,0.2197_r8,0.3185_r8,0.2351_r8,0.0647_r8,0.0183_r8/
+
+    !c-----gkw is the planck-weighted k-distribution function due to h2o
+    !c     line absorption in the 3 subbands (800-720,620-720,540-620 /cm)
+    !c     of band 3 (Table 10).  Note that the order of the sub-bands
+    !c     is reversed.
+
+    !ctar       data gkw/  0.1782_r8,0.0593_r8,0.0215_r8,0.0068_r8,0.0022_r8,0.0000_r8, &
+    !ctar                0.0923_r8,0.1675_r8,0.0923_r8,0.0187_r8,0.0178_r8,0.0000_r8, &
+    !ctar                 0.0000_r8,0.1083_r8,0.1581_r8,0.0455_r8,0.0274_r8,0.0041_r8/
+
+
+    !c-----Coefficients for computing the extinction coefficient
+    !c     for cloud ice particles (Table 11a, Eq. 6.4a).
+    !c
+    !ctar       data aib /  -0.44171_r8,    0.61222_r8,   0.06465_r8, &
+    !ctar                  -0.13727_r8,    0.54102_r8,   0.28962_r8, &
+    !ctar                  -0.01878_r8,    1.19270_r8,   0.79080_r8, &
+    !ctar                  -0.01896_r8,    0.78955_r8,   0.69493_r8, &
+    !ctar                 -0.04788_r8,    0.69729_r8,   0.54492_r8, &
+    !ctar                  -0.02265_r8,    1.13370_r8,   0.76161_r8, &
+    !ctar                  -0.01038_r8,    1.46940_r8,   0.89045_r8, &
+    !ctar                  -0.00450_r8,    1.66240_r8,   0.95989_r8, &
+    !ctar                  -0.00044_r8,    2.01500_r8,   1.03750_r8, &
+    !ctar                  -0.02956_r8,    1.06430_r8,   0.71283_r8/
+    !c
+    !c-----coefficients for computing the extinction coefficient
+    !c     for cloud liquid drops. (Table 11b, Eq. 6.4b)
+    !c
+    !ctar      data awb /   0.08641_r8,    0.01769_r8,    -1.5572e-3_r8,   3.4896e-5_r8, &
+    !ctar                  0.22027_r8,    0.00997_r8,    -1.8719e-3_r8,   5.3112e-5_r8, &
+    !ctar                  0.38074_r8,   -0.03027_r8,     1.0154e-3_r8,  -1.1849e-5_r8, &
+    !ctar                  0.15587_r8,    0.00371_r8,    -7.7705e-4_r8,   2.0547e-5_r8, &
+    !ctar                  0.05518_r8,    0.04544_r8,    -4.2067e-3_r8,   1.0184e-4_r8, &
+    !ctar                  0.12724_r8,    0.04751_r8,    -5.2037e-3_r8,   1.3711e-4_r8, &
+    !ctar                  0.30390_r8,    0.01656_r8,    -3.5271e-3_r8,   1.0828e-4_r8, &
+    !ctar                  0.63617_r8,   -0.06287_r8,     2.2350e-3_r8,  -2.3177e-5_r8, &
+    !ctar                  1.15470_r8,   -0.19282_r8,     1.2084e-2_r8,  -2.5612e-4_r8, &
+    !ctar                 0.34021_r8,   -0.02805_r8,     1.0654e-3_r8,  -1.5443e-5_r8/
+    !c
+    !c-----coefficients for computing the single-scattering albedo
+    !c     for cloud ice particles. (Table 12a, Eq. 6.5)
+    !c
+    !ctar      data aiw/    0.17201_r8,    1.8814e-2_r8,  -3.5117e-4_r8,   2.1127e-6_r8, &
+    !ctar                  0.81470_r8,   -4.1989e-3_r8,   2.3152e-7_r8,   2.0992e-7_r8, &
+    !ctar                  0.54859_r8,   -7.4266e-4_r8,   1.2865e-5_r8,  -5.7092e-8_r8, &
+    !ctar                  0.39218_r8,    6.4180e-3_r8,  -1.1567e-4_r8,   6.9710e-7_r8, &
+    !ctar                  0.71773_r8,   -5.1754e-3_r8,   4.6658e-5_r8,  -1.2085e-7_r8, &
+    !ctar                  0.77345_r8,   -8.4966e-3_r8,   1.1451e-4_r8,  -5.5170e-7_r8, &
+    !ctar                  0.74975_r8,   -8.7083e-3_r8,   1.3367e-4_r8,  -7.1603e-7_r8, &
+    !ctar                  0.69011_r8,   -6.9766e-3_r8,   1.1674e-4_r8,  -6.6472e-7_r8, &
+    !ctar                  0.83963_r8,   -1.0347e-2_r8,   1.4651e-4_r8,  -7.5965e-7_r8, &
+    !ctar                  0.64860_r8,   -4.4142e-3_r8,   6.5458e-5_r8,  -3.2655e-7_r8/
+
+    !c-----coefficients for computing the single-scattering albedo
+    !c     for cloud liquid drops. (Table 12b, Eq. 6.5)
+    !c
+    !ctar      data aww/   -7.8566e-2_r8,  8.0875e-2_r8,  -4.3403e-3_r8,   8.1341e-5_r8, &
+    !ctar                 -1.3384e-2_r8,  9.3134e-2_r8,  -6.0491e-3_r8,   1.3059e-4_r8, &
+    !ctar                  3.7096e-2_r8,  7.3211e-2_r8,  -4.4211e-3_r8,   9.2448e-5_r8, &
+    !ctar                 -3.7600e-3_r8,  9.3344e-2_r8,  -5.6561e-3_r8,   1.1387e-4_r8, &
+    !ctar                  0.40212_r8,    7.8083e-2_r8,  -5.9583e-3_r8,   1.2883e-4_r8, &
+    !ctar                  0.57928_r8,    5.9094e-2_r8,  -5.4425e-3_r8,   1.2725e-4_r8, &
+    !ctar                  0.68974_r8,    4.2334e-2_r8,  -4.9469e-3_r8,   1.2863e-4_r8, &
+    !ctar                  0.80122_r8,    9.4578e-3_r8,  -2.8508e-3_r8,   9.0078e-5_r8, &
+    !ctar                  1.02340_r8,   -2.6204e-2_r8,   4.2552e-4_r8,   3.2160e-6_r8, &
+    !ctar                  0.05092_r8,    7.5409e-2_r8,  -4.7305e-3_r8,   1.0121e-4_r8/ 
+    !c
+    !c-----coefficients for computing the asymmetry factor for cloud ice 
+    !c     particles. (Table 13a, Eq. 6.6)
+    !c
+    !ctar      data aig /   0.57867_r8,    1.5592e-2_r8,  -2.6372e-4_r8,   1.5125e-6_r8, &
+    !ctar                  0.72259_r8,    4.7922e-3_r8,  -4.7164e-5_r8,   2.0400e-7_r8, &
+    !ctar                  0.76109_r8,    6.9922e-3_r8,  -1.0935e-4_r8,   5.9885e-7_r8, &
+    !ctar                  0.86934_r8,    4.2268e-3_r8,  -7.4085e-5_r8,   4.3547e-7_r8, &
+    !ctar                  0.89103_r8,    2.8482e-3_r8,  -3.9174e-5_r8,   2.0098e-7_r8, &
+    !ctar                  0.86325_r8,    3.2935e-3_r8,  -3.9872e-5_r8,   1.8015e-7_r8, &
+    !ctar                  0.85064_r8,    3.8505e-3_r8,  -4.9259e-5_r8,   2.3096e-7_r8, &
+    !ctar                  0.86945_r8,    3.7869e-3_r8,  -5.6525e-5_r8,   3.0016e-7_r8, &
+    !ctar                  0.80122_r8,    4.9086e-3_r8,  -5.8831e-5_r8,   2.6367e-7_r8, &
+    !ctar                  0.73290_r8,    7.3898e-3_r8,  -1.0515e-4_r8,   5.4034e-7_r8/
+    !c
+    !c-----coefficients for computing the asymmetry factor for cloud liquid 
+    !c     drops. (Table 13b, Eq. 6.6)
+    !c
+    !ctar       data awg /  -0.51930_r8,    0.20290_r8,    -1.1747e-2_r8,   2.3868e-4_r8, &
+    !ctar                  -0.22151_r8,    0.19708_r8,    -1.2462e-2_r8,   2.6646e-4_r8, &
+    !ctar                  0.14157_r8,    0.14705_r8,    -9.5802e-3_r8,   2.0819e-4_r8, &
+    !ctar                   0.41590_r8,    0.10482_r8,    -6.9118e-3_r8,   1.5115e-4_r8, &
+    !ctar                   0.55338_r8,    7.7016e-2_r8,  -5.2218e-3_r8,   1.1587e-4_r8, &
+    !ctar                   0.61384_r8,    6.4402e-2_r8,  -4.6241e-3_r8,   1.0746e-4_r8, &
+    !ctar                   0.67891_r8,    4.8698e-2_r8,  -3.7021e-3_r8,   9.1966e-5_r8, &
+    !ctar                   0.78169_r8,    2.0803e-2_r8,  -1.4749e-3_r8,   3.9362e-5_r8, &
+    !ctar                   0.93218_r8,   -3.3425e-2_r8,   2.9632e-3_r8,  -6.9362e-5_r8, &
+    !ctar                  0.01649_r8,    0.16561_r8,    -1.0723e-2_r8,   2.3220e-4_r8/ 
+    !c
+    !c-----include tables used in the table look-up for co2 (band 3), 
+    !c     o3 (band 5), and h2o (bands 1, 2, and 8) transmission functions.
+    !c     "co2.tran4" is the co2 transmission table applicable to a large
+    !c     range of co2 amount (up to 100 times of the present-time value).
+
+    !INCLUDE "h2o.tran3_90"
+    !INCLUDE "co2.tran4_90"
+    !INCLUDE "o3.tran3_90"
+    !ctar
+    !ctar   Definition of some input parameters:     
+    !ctar 
+    !       high = .false. 
+    !       trace = .true.
+    !ctar       trace = .false.          
+    !      n2o = 0.28e-6_r8
+    !       ch4 = 1.75e-6_r8
+    !       cfc11 = 0.3e-9_r8
+    !       cfc12 = 0.5e-9_r8
+    !       cfc22 = 0.2e-9_r8
+    !       vege = .false.
+    !       overcast = .false. 
+    !      cldwater = .false. 
+    !       aerosol = .false.             
+    !ctar
+    !----------------initialize variables currently not used
+
+    tv=0.0_r8
+    ev=0.0_r8
+    rv=0.0_r8
+    cwc=0.0_r8
+    taual=0.0_r8
+    ssaal=0.0_r8
+    asyal=0.0_r8
+
+    !ctar
+    !c-----compute layer pressure (pa) and layer temperature minus 250K (dt)
+
+    DO k=1,np
+       DO i=1,m
+          pa(i,k)=0.5_r8*(pl(i,k)+pl(i,k+1))
+          dt(i,k)=ta(i,k)-250.0_r8
+       ENDDO
+    ENDDO
+
+    !c-----compute layer absorber amount
+
+    !c     dh2o : water vapor amount (g/cm**2)
+    !c     dcont: scaled water vapor amount for continuum absorption
+    !c            (g/cm**2)
+    !c     dco2 : co2 amount (cm-atm)stp
+    !c     do3  : o3 amount (cm-atm)stp
+    !c     dn2o : n2o amount (cm-atm)stp
+    !c     dch4 : ch4 amount (cm-atm)stp
+    !c     df11 : cfc11 amount (cm-atm)stp
+    !c     df12 : cfc12 amount (cm-atm)stp
+    !c     df22 : cfc22 amount (cm-atm)stp
+    !c     the factor 1.02 is equal to 1000/980
+    !c     factors 789 and 476 are for unit conversion
+    !c     the factor 0.001618 is equal to 1.02/(.622*1013.25) 
+    !c     the factor 6.081 is equal to 1800/296
+
+    DO k=1,np
+       DO i=1,m
+
+          dp   (i,k) = pl(i,k+1)-pl(i,k)
+
+          dh2o (i,k) = 1.02_r8*wa(i,k)*dp(i,k)
+          dh2o (i,k) = MAX(dh2o (i,k),1.e-10_r8)
+          do3  (i,k) = 476.0_r8*oa(i,k)*dp(i,k)
+          do3 (i,k) = MAX(do3 (i,k),1.e-6_r8)
+          dco2 (i,k) = 789.0_r8*co2*dp(i,k)
+          dco2 (i,k) = MAX(dco2 (i,k),1.e-4_r8)
+
+          dch4 (i,k) = 789.0_r8*ch4*dp(i,k)
+          dn2o (i,k) = 789.0_r8*n2o*dp(i,k)
+          df11 (i,k) = 789.0_r8*cfc11*dp(i,k)
+          df12 (i,k) = 789.0_r8*cfc12*dp(i,k)
+          df22 (i,k) = 789.0_r8*cfc22*dp(i,k)
+
+          !c-----compute scaled water vapor amount for h2o continuum absorption
+          !c     following eq. (4.21).
+
+          xx=pa(i,k)*0.001618_r8*wa(i,k)*wa(i,k)*dp(i,k)
+          dcont(i,k) = xx*EXP(1800.0_r8/ta(i,k)-6.081_r8)
+
+       ENDDO
+    ENDDO
+
+    !c-----Set default values for reff.
+    !c     Index is 1 for ice, 2 for waterdrops and 3 for raindrops.
+
+    DO k=1,np
+       DO i=1,m
+          reff(i,k,1)=40.0_r8
+          reff(i,k,2)=10.0_r8
+       ENDDO
+    ENDDO
+
+    !c-----compute layer cloud water amount (gm/m**2)
+
+    IF (cldwater) THEN
+       DO k=1,np
+          DO i=1,m
+             xx=1.02_r8*10000.0_r8*(pl(i,k+1)-pl(i,k))
+             cwp(i,k,1)=xx*cwc(i,k,1)
+             cwp(i,k,2)=xx*cwc(i,k,2)
+             cwp(i,k,3)=xx*cwc(i,k,3)
+          ENDDO
+       ENDDO
+
+       DO k=1,np
+          DO i=1,m
+
+             IF (cwp(i,k,1) .GT. 0.000001_r8) THEN
+
+                !c-----Compute effective radius of ice cloud particles following Equation (6.9)
+
+                j=INT((ta(i,k)-193.0_r8)*0.1_r8)
+                IF (j.LT.1) j=1
+                IF (j.GT.5) j=5
+
+                !c-----Conversion of the unit of cwc in g/g to the unit of x in g/m^3.
+                !c     The constant 348.43 is equal to (100/0.287), 
+                !c     where the constant 0.287 is related to the gas constant of dry air.
+
+                x=cwc(i,k,1)*348.43_r8*pa(i,k)/ta(i,k)
+                x=LOG10(x)
+                reff(i,k,1)=0.65_r8*10.0_r8**(ai(j)+bi(j)*x+ci(j)*x*x+di(j)*x*x*x)
+                reff(i,k,1)=MAX(reff(i,k,1),10.0_r8)
+                reff(i,k,1)=MIN(reff(i,k,1),70.0_r8)
+
+             ENDIF
+
+             IF(cwp(i,k,2) .GT. 0.000001_r8) THEN
+
+                !c-----Effective radius of water cloud particles following Equation (6.13).
+
+                x=cwc(i,k,2)*348.43_r8*pa(i,k)/ta(i,k)
+                reff(i,k,2)=14.3_r8*x**0.1667_r8
+                reff(i,k,2)=MAX(reff(i,k,2),4.0_r8)
+                reff(i,k,2)=MIN(reff(i,k,2),20.0_r8)
+
+             ENDIF
+
+          ENDDO
+       ENDDO
+
+    ENDIF
+
+    !c-----the surface (np+1) is treated as a layer filled with black clouds.
+    !c     transfc is the transmittance between the surface and a pressure level.
+    !c     trantcr is the clear-sky transmittance between the surface and a
+    !c     pressure level.
+
+    DO i=1,m
+       sfcem(i)       =0.0_r8
+       transfc(i,np+1)=1.0_r8
+       trantcr(i,np+1)=1.0_r8
+    ENDDO
+
+    !c-----initialize fluxes
+
+    DO k=1,np+1
+       DO i=1,m
+          flx(i,k)  = 0.0_r8
+          flc(i,k)  = 0.0_r8
+          dfdts(i,k)= 0.0_r8
+       ENDDO
+    ENDDO
+
+    !c-----integration over spectral bands
+
+    DO  ibn=1,10 !do 1000 ibn=1,10
+
+       IF (ibn.EQ.10 .AND. .NOT.trace) RETURN
+
+       !c-----if h2otbl, compute h2o (line) transmittance using table look-up.
+       !c     if conbnd, compute h2o (continuum) transmittance in bands 2-7.
+       !c     if co2bnd, compute co2 transmittance in band 3.
+       !c     if oznbnd, compute  o3 transmittance in band 5.
+       !c     if n2obnd, compute n2o transmittance in bands 6 and 7.
+       !c     if ch4bnd, compute ch4 transmittance in bands 6 and 7.
+       !c     if combnd, compute co2-minor transmittance in bands 4 and 5.
+       !c     if f11bnd, compute cfc11 transmittance in bands 4 and 5.
+       !c     if f12bnd, compute cfc12 transmittance in bands 4 and 6.
+       !c     if f22bnd, compute cfc22 transmittance in bands 4 and 6.
+       !c     if b10bnd, compute flux reduction due to n2o in band 10.
+
+       h2otbl=high.AND.(ibn.EQ.1.OR.ibn.EQ.2.OR.ibn.EQ.8)
+       conbnd=ibn.GE.2.AND.ibn.LE.7
+       co2bnd=ibn.EQ.3
+       oznbnd=ibn.EQ.5
+       n2obnd=ibn.EQ.6.OR.ibn.EQ.7
+       ch4bnd=ibn.EQ.6.OR.ibn.EQ.7
+       combnd=ibn.EQ.4.OR.ibn.EQ.5
+       f11bnd=ibn.EQ.4.OR.ibn.EQ.5
+       f12bnd=ibn.EQ.4.OR.ibn.EQ.6
+       f22bnd=ibn.EQ.4.OR.ibn.EQ.6
+       b10bnd=ibn.EQ.10
+
+       !c-----blayer is the spectrally integrated planck flux of the mean layer
+       !c     temperature derived from eq. (3.11)
+       !c     The fitting for the planck flux is valid for the range 160-345 K.
+
+       DO k=1,np
+
+          DO i=1,m
+             tx(i)=ta(i,k)
+          ENDDO
+          CALL planck(ibn,m,tx,xlayer)
+
+          DO i=1,m
+             blayer(i,k)=xlayer(i)
+          ENDDO
+
+       ENDDO
+
+       !c-----Index "0" is the layer above the top of the atmosphere.
+
+       DO i=1,m
+          blayer(i,0)=0.0_r8
+       ENDDO
+
+       !c-----Surface emission and reflectivity. See Section 9.
+       !c     bs and dbs include the effect of surface emissivity.
+
+       CALL sfcflux (ibn,m,ns,fs,tg,eg,tv,ev,rv,vege,bs,dbs,rflxs) 
+
+       DO i=1,m
+          blayer(i,np+1)=bs(i)
+       ENDDO
+
+       !c------interpolate Planck function at model levels (linear in p)
+
+       DO k=2,np
+          DO i=1,m
+             blevel(i,k)=(blayer(i,k-1)*dp(i,k)+blayer(i,k)*dp(i,k-1))/ &
+                  (dp(i,k-1)+dp(i,k))
+          ENDDO
+       ENDDO
+
+       !c-----Extrapolate blevel(i,1) from blayer(i,2) and blayer(i,1)
+
+       DO i=1,m
+          blevel(i,1)=blayer(i,1)+(blayer(i,1)-blayer(i,2))*dp(i,1)/ &
+               (dp(i,1)+dp(i,2))
+       ENDDO
+
+       !c-----If the surface air temperature tb is known, compute blevel(i,np+1)
+
+       CALL planck(ibn,m,tb,xlayer)
+       DO i=1,m
+          blevel(i,np+1)=xlayer(i)
+       ENDDO
+
+       !c-----Otherwise, extrapolate blevel(np+1) from blayer(np-1) and blayer(np)
+
+       !c      do i=1,m
+       !c        blevel(i,np+1)=blayer(i,np)+(blayer(i,np)-blayer(i,np-1)) &
+       !c                     *dp(i,np)/(dp(i,np)+dp(i,np-1))
+       !c      enddo
+
+       !c-----Compute cloud optical thickness following Eqs. (6.4a,b) and (6.7)
+       !c     Rain optical thickness is set to 0.00307 /(gm/m**2).
+       !c     It is for a specific drop size distribution provided by Q. Fu.
+
+       !ctar      if (cldwater) then
+       !ctar        do k=1,np
+       !ctar        do i=1,m
+       !ctar           taucl(i,k,1)=cwp(i,k,1)*(aib(1,ibn)+aib(2,ibn)/ &
+       !ctar            reff(i,k,1)**aib(3,ibn))
+       !ctar           taucl(i,k,2)=cwp(i,k,2)*(awb(1,ibn)+(awb(2,ibn)+ &
+       !ctar            (awb(3,ibn)+awb(4,ibn)*reff(i,k,2))*reff(i,k,2)) &
+       !ctar            *reff(i,k,2))
+       !ctar           taucl(i,k,3)=0.00307_r8*cwp(i,k,3)
+       !ctar         enddo
+       !ctar        enddo
+       !ctar       endif
+
+       !c-----Compute cloud single-scattering albedo and asymmetry factor for
+       !c     a mixture of ice particles and liquid drops following 
+       !c     Eqs. (6.5), (6.6), (6.15) and (6.16).
+       !c     Single-scattering albedo and asymmetry factor of rain are set
+       !c     to 0.54 and 0.95, respectively, based on the information provided
+       !c     by Prof. Qiang Fu.
+
+       DO k=1,np
+          DO i=1,m
+
+             tcldlyr(i,k) = 1.0_r8
+             tauc=taucl(i,k,1)+taucl(i,k,2)+taucl(i,k,3)
+
+             IF (tauc.GT.0.02 .AND. fcld(i,k).GT.0.01) THEN
+
+                w1=taucl(i,k,1)*(aiw(1,ibn)+(aiw(2,ibn)+(aiw(3,ibn) &
+                     +aiw(4,ibn)*reff(i,k,1))*reff(i,k,1))*reff(i,k,1))
+                w2=taucl(i,k,2)*(aww(1,ibn)+(aww(2,ibn)+(aww(3,ibn) &
+                     +aww(4,ibn)*reff(i,k,2))*reff(i,k,2))*reff(i,k,2))
+                w3=taucl(i,k,3)*0.54_r8
+                ww=(w1+w2+w3)/tauc
+
+                g1=w1*(aig(1,ibn)+(aig(2,ibn)+(aig(3,ibn) &
+                     +aig(4,ibn)*reff(i,k,1))*reff(i,k,1))*reff(i,k,1))
+                g2=w2*(awg(1,ibn)+(awg(2,ibn)+(awg(3,ibn) &
+                     +awg(4,ibn)*reff(i,k,2))*reff(i,k,2))*reff(i,k,2))
+                g3=w3*0.95_r8
+
+                gg=(g1+g2+g3)/(w1+w2+w3)
+
+                !c-----Parameterization of LW scattering following Eqs. (6.11) and (6.12). 
+
+                ff=0.5_r8+(0.3739_r8+(0.0076_r8+0.1185_r8*gg)*gg)*gg
+                tauc=(1.0_r8-ww*ff)*tauc
+
+                !c-----compute cloud diffuse transmittance. It is approximated by using 
+                !c     a diffusivity factor of 1.66.
+
+                tcldlyr(i,k)=EXP(-1.66_r8*tauc)
+
+             ENDIF
+
+          ENDDO
+       ENDDO
+
+       !c-----Compute optical thickness, single-scattering albedo and asymmetry
+       !c     factor for a mixture of "na" aerosol types. Eqs. (7.1)-(7.3)
+
+       IF (aerosol) THEN
+
+          DO k=1,np
+
+             DO i=1,m
+                taua(i,k)=0.0_r8
+                ssaa(i,k)=0.0_r8
+                asya(i,k)=0.0_r8
+             ENDDO
+
+             DO j=1,na
+                DO i=1,m
+                   taua(i,k)=taua(i,k)+taual(i,k,ibn,j)
+                   w1=ssaal(i,k,ibn,j)*taual(i,k,ibn,j)
+                   ssaa(i,k)=ssaa(i,k)+w1
+                   asya(i,k)=asya(i,k)+asyal(i,k,ibn,j)*w1
+                ENDDO
+             ENDDO
+
+             !c-----taerlyr is the aerosol diffuse transmittance
+
+             DO i=1,m
+                taerlyr(i,k)=1.0_r8
+
+                IF (taua(i,k) .GT. 0.001_r8) THEN 
+                   IF (ssaa(i,k) .GT. 0.001_r8) THEN
+                      asya(i,k)=asya(i,k)/ssaa(i,k)
+                      ssaa(i,k)=ssaa(i,k)/taua(i,k)
+
+                      !c-----Parameterization of aerosol scattering following Eqs. (6.11) and (6.12). 
+
+                      ff=0.5_r8+(0.3739_r8+(0.0076_r8+0.1185_r8*asya(i,k))*asya(i,k))*asya(i,k)
+                      taua(i,k)=taua(i,k)*(1.-ssaa(i,k)*ff)
+
+                   ENDIF
+                   taerlyr(i,k)=EXP(-1.66_r8*taua(i,k))
+                ENDIF
+
+             ENDDO
+          ENDDO
+
+       ENDIF
+
+       !c-----Compute the exponential terms (Eq. 8.21) at each layer due to
+       !c     water vapor line absorption when k-distribution is used
+
+       IF (.NOT.h2otbl .AND. .NOT.b10bnd) THEN
+          CALL h2oexps(ibn,m,np,dh2o,pa,dt,xkw,aw,bw,pm,mw,h2oexp)
+       ENDIF
+
+       !c-----compute the exponential terms (Eq. 4.24) at each layer due to
+       !c     water vapor continuum absorption.
+       !c     ne is the number of terms used in each band to compute water 
+       !c     vapor continuum transmittance (Table 9).
+
+       ne=0
+       IF (conbnd) THEN
+
+          ne=1
+          IF (ibn.EQ.3) ne=3
+
+          CALL conexps(ibn,m,np,dcont,xke,conexp)
+
+       ENDIF
+
+       !c-----compute the exponential terms (Eq. 8.21) at each layer due to
+       !c     co2 absorption
+
+       IF (.NOT.high .AND. co2bnd) THEN
+          CALL co2exps(m,np,dco2,pa,dt,co2exp)
+       ENDIF
+
+       !c***** for trace gases *****
+
+       IF (trace) THEN
+
+          !c-----compute the exponential terms at each layer due to n2o absorption
+
+          IF (n2obnd) THEN
+             CALL n2oexps(ibn,m,np,dn2o,pa,dt,n2oexp)
+          ENDIF
+
+          !c-----compute the exponential terms at each layer due to ch4 absorption
+
+          IF (ch4bnd) THEN
+             CALL ch4exps(ibn,m,np,dch4,pa,dt,ch4exp)
+          ENDIF
+
+          !c-----Compute the exponential terms due to co2 minor absorption
+
+          IF (combnd) THEN
+             CALL comexps(ibn,m,np,dco2,dt,comexp)
+          ENDIF
+
+          !c-----Compute the exponential terms due to cfc11 absorption.
+          !c     The values of the parameters are given in Table 7.
+
+          IF (f11bnd) THEN
+             a1  = 1.26610e-3_r8
+             b1  = 3.55940e-6_r8
+             fk1 = 1.89736e+1_r8
+             a2  = 8.19370e-4_r8
+             b2  = 4.67810e-6_r8
+             fk2 = 1.01487e+1_r8
+             CALL cfcexps(ibn,m,np,a1,b1,fk1,a2,b2,fk2,df11,dt,f11exp)
+          ENDIF
+
+          !c-----Compute the exponential terms due to cfc12 absorption.
+
+          IF (f12bnd) THEN
+             a1  = 8.77370e-4_r8
+             b1  =-5.88440e-6_r8
+             fk1 = 1.58104e+1_r8
+             a2  = 8.62000e-4_r8
+             b2  =-4.22500e-6_r8
+             fk2 = 3.70107e+1_r8
+             CALL cfcexps(ibn,m,np,a1,b1,fk1,a2,b2,fk2,df12,dt,f12exp)
+          ENDIF
+
+          !c-----Compute the exponential terms due to cfc22 absorption.
+
+          IF (f22bnd) THEN
+             a1  = 9.65130e-4_r8
+             b1  = 1.31280e-5_r8
+             fk1 = 6.18536e+0_r8
+             a2  =-3.00010e-5_r8 
+             b2  = 5.25010e-7_r8
+             fk2 = 3.27912e+1_r8
+             CALL cfcexps(ibn,m,np,a1,b1,fk1,a2,b2,fk2,df22,dt,f22exp)
+          ENDIF
+
+          !c-----Compute the exponential terms at each layer in band 10 due to
+          !c     h2o line and continuum, co2, and n2o absorption
+
+          IF (b10bnd) THEN
+             CALL b10exps(m,np,dh2o,dcont,dco2,dn2o,pa,dt &
+                  ,h2oexp,conexp,co2exp,n2oexp)
+          ENDIF
+
+       ENDIF
+
+       !c-----blayer(i,np+1) includes the effect of surface emissivity.
+
+       DO i=1,m
+          bd(i,0)=0.0_r8
+          bu(i,np+1)=blayer(i,np+1)
+       ENDDO
+
+       !c-----do-loop 1500 is for computing upward (bu) and downward (bd)
+       !c     emission of a layer following Eqs. (8.17), (8.18), (8.19).
+       !c     Here, trant(i,k2) is the transmittance of the layer k2-1.
+
+       DO  k2=2,np+1 !do 1500 k2=2,np+1
+
+          !c-----for h2o line transmission
+
+          IF (.NOT. h2otbl) THEN
+             DO ik=1,6
+                DO i=1,m
+                   th2o(i,ik)=1.0_r8
+                ENDDO
+             ENDDO
+          ENDIF
+
+          !c-----for h2o continuum transmission
+
+          DO iq=1,3
+             DO i=1,m
+                tcon(i,iq)=1.0_r8
+             ENDDO
+          ENDDO
+
+          !c-----for co2 transmission using k-distribution method.
+          !c     band 3 is divided into 3 sub-bands, but sub-bands 3a and 3c
+          !c     are combined in computing the co2 transmittance.
+
+          IF (.NOT.high .AND. co2bnd) THEN
+             DO isb=1,2
+                DO ik=1,6
+                   DO i=1,m
+                      tco2(i,ik,isb)=1.0_r8
+                   ENDDO
+                ENDDO
+             ENDDO
+          ENDIF
+
+
+          DO i=1,m
+             x1(i)=0.0_r8
+             x2(i)=0.0_r8
+             x3(i)=0.0_r8
+             trant(i,k2)=1.0_r8
+          ENDDO
+
+          IF (h2otbl) THEN
+
+             !c-----Compute water vapor transmittance using table look-up.
+             !c     The following values are taken from Table 8.
+
+             w1=-8.0_r8
+             p1=-2.0_r8
+             dwe=0.3_r8
+             dpe=0.2_r8
+
+             IF (ibn.EQ.1) THEN
+                CALL tablup(k2,m,np,nx,nh,dh2o,pa,dt,x1,x2,x3, &
+                     w1,p1,dwe,dpe,h11,h12,h13,trant)
+
+             ENDIF
+             IF (ibn.EQ.2) THEN
+                CALL tablup(k2,m,np,nx,nh,dh2o,pa,dt,x1,x2,x3, &
+                     w1,p1,dwe,dpe,h21,h22,h23,trant)
+
+             ENDIF
+             IF (ibn.EQ.8) THEN
+                CALL tablup(k2,m,np,nx,nh,dh2o,pa,dt,x1,x2,x3, &
+                     w1,p1,dwe,dpe,h81,h82,h83,trant)
+             ENDIF
+
+             !c-----for water vapor continuum absorption
+
+             IF (conbnd) THEN
+                DO i=1,m
+                   tcon(i,1)=tcon(i,1)*conexp(i,k2-1,1)
+                   trant(i,k2)=trant(i,k2)*tcon(i,1)
+                ENDDO
+             ENDIF
+
+          ELSE
+
+             !c-----compute water vapor transmittance using k-distribution
+
+             IF (.NOT.b10bnd) THEN
+                CALL h2okdis(ibn,m,np,k2-1,fkw,gkw,ne,h2oexp,conexp, &
+                     th2o,tcon,trant)
+
+             ENDIF
+
+          ENDIF
+
+          IF (co2bnd) THEN
+
+             IF (high) THEN
+
+                !c-----Compute co2 transmittance using table look-up method.
+                !c     The following values are taken from Table 8.
+
+                w1=-4.0_r8
+                p1=-2.0_r8
+                dwe=0.3_r8
+                dpe=0.2_r8
+                CALL tablup(k2,m,np,nx,nc,dco2,pa,dt,x1,x2,x3, &
+                     w1,p1,dwe,dpe,c1,c2,c3,trant)
+             ELSE
+
+                !c-----compute co2 transmittance using k-distribution method
+                CALL co2kdis(m,np,k2-1,co2exp,tco2,trant)
+
+             ENDIF
+
+          ENDIF
+
+          !c-----Always use table look-up to compute o3 transmittance.
+          !c     The following values are taken from Table 8.
+
+          IF (oznbnd) THEN
+             w1=-6.0_r8
+             p1=-2.0_r8
+             dwe=0.3_r8
+             dpe=0.2_r8
+             CALL tablup(k2,m,np,nx,no,do3,pa,dt,x1,x2,x3, &
+                  w1,p1,dwe,dpe,o1,o2,o3,trant)
+          ENDIF
+
+          !c-----include aerosol effect
+
+          IF (aerosol) THEN
+             DO i=1,m
+                trant(i,k2)=trant(i,k2)*taerlyr(i,k2-1)
+             ENDDO
+          ENDIF
+
+          !c-----Compute upward and downward emission of the layer k2-1
+
+          DO i=1,m
+
+             xx=(blayer(i,k2-1)-blevel(i,k2-1))* &
+                  (blayer(i,k2-1)-blevel(i,k2))
+
+             IF (xx.GT.0.0_r8) THEN
+
+                !c-----If xx>0, there is a local temperature minimum or maximum.
+                !c     Computations of bd and bu follow Eq. (8.20).
+
+                bd(i,k2-1)=.5_r8*blayer(i,k2-1)+.25_r8*(blevel(i,k2-1)+blevel(i,k2))
+                bu(i,k2-1)=bd(i,k2-1)
+
+             ELSE
+
+                !c-----Computations of bd and bu following Eqs.(8.17) and (8.18).
+                !c     The effect of clouds on the transmission of a layer is taken
+                !c     into account, following Eq. (8.19).
+
+                xx=(fcld(i,k2-1)*tcldlyr(i,k2-1)+(1.-fcld(i,k2-1))) &
+                     *trant(i,k2)
+
+                yy=MIN(0.9999_r8,xx)
+                yy=MAX(0.00001_r8,yy)
+                xx=(blevel(i,k2-1)-blevel(i,k2))/log(yy)
+                bd(i,k2-1)=(blevel(i,k2)-blevel(i,k2-1)*yy)/(1.0_r8-yy)-xx
+                bu(i,k2-1)=(blevel(i,k2-1)+blevel(i,k2))-bd(i,k2-1)
+
+             ENDIF
+
+          ENDDO
+
+       END DO !1500 continue
+
+       !c-----initialize fluxes
+
+       DO k=1,np+1
+          DO i=1,m
+             flxu(i,k) = 0.0_r8
+             flxd(i,k) = 0.0_r8
+             flcu(i,k) = 0.0_r8
+             flcd(i,k) = 0.0_r8
+          ENDDO
+       ENDDO
+
+       !c-----
+
+       DO  k1=1,np ! do 2000 k1=1,np
+
+          !c-----initialization
+          !c
+          !c     it, im, and ib are the numbers of cloudy layers in the high,
+          !c     middle, and low cloud groups between levels k1 and k2.
+          !c     cldlw, cldmd, and cldhi are the equivalent black-cloud fractions
+          !c     of low, middle, and high troposphere.
+          !c     tranal is the aerosol transmission function
+
+          DO i=1,m
+             it(i) = 0
+             im(i) = 0
+             ib(i) = 0
+             cldlw(i) = 0.0_r8
+             cldmd(i) = 0.0_r8
+             cldhi(i) = 0.0_r8
+             tranal(i)= 1.0_r8
+          ENDDO
+
+          !c-----for h2o line transmission
+
+          IF (.NOT. h2otbl) THEN
+             DO ik=1,6
+                DO i=1,m
+                   th2o(i,ik)=1.0_r8
+                ENDDO
+             ENDDO
+          ENDIF
+
+          !c-----for h2o continuum transmission
+
+          DO iq=1,3
+             DO i=1,m
+                tcon(i,iq)=1.0_r8
+             ENDDO
+          ENDDO
+
+          !c-----for co2 transmission using k-distribution method.
+          !c     band 3 is divided into 3 sub-bands, but sub-bands 3a and 3c
+          !c     are combined in computing the co2 transmittance.
+
+          IF (.NOT.high .AND. co2bnd) THEN
+             DO isb=1,2
+                DO ik=1,6
+                   DO i=1,m
+                      tco2(i,ik,isb)=1.0_r8
+                   ENDDO
+                ENDDO
+             ENDDO
+          ENDIF
+
+          !c***** for trace gases *****
+
+          IF (trace) THEN
+
+             !c-----for n2o transmission using k-distribution method.
+
+             IF (n2obnd) THEN
+                DO ik=1,4
+                   DO i=1,m
+                      tn2o(i,ik)=1.0_r8
+                   ENDDO
+                ENDDO
+             ENDIF
+
+             !c-----for ch4 transmission using k-distribution method.
+
+             IF (ch4bnd) THEN
+                DO ik=1,4
+                   DO i=1,m
+                      tch4(i,ik)=1.0_r8
+                   ENDDO
+                ENDDO
+             ENDIF
+
+             !c-----for co2-minor transmission using k-distribution method.
+
+             IF (combnd) THEN
+                DO ik=1,6
+                   DO i=1,m
+                      tcom(i,ik)=1.0_r8
+                   ENDDO
+                ENDDO
+             ENDIF
+
+             !c-----for cfc-11 transmission using k-distribution method.
+
+             IF (f11bnd) THEN
+                DO i=1,m
+                   tf11(i)=1.0_r8
+                ENDDO
+             ENDIF
+
+             !c-----for cfc-12 transmission using k-distribution method.
+
+             IF (f12bnd) THEN
+                DO i=1,m
+                   tf12(i)=1.0_r8
+                ENDDO
+             ENDIF
+
+             !c-----for cfc-22 transmission when using k-distribution method.
+
+             IF (f22bnd) THEN
+                DO i=1,m
+                   tf22(i)=1.0_r8
+                ENDDO
+             ENDIF
+
+             !c-----for the transmission in band 10 using k-distribution method.
+
+             IF (b10bnd) THEN
+                DO ik=1,5
+                   DO i=1,m
+                      th2o(i,ik)=1.0_r8
+                   ENDDO
+                ENDDO
+
+                DO ik=1,6
+                   DO i=1,m
+                      tco2(i,ik,1)=1.0_r8
+                   ENDDO
+                ENDDO
+
+                DO i=1,m
+                   tcon(i,1)=1.0_r8
+                ENDDO
+
+                DO ik=1,2
+                   DO i=1,m
+                      tn2o(i,ik)=1.0_r8
+                   ENDDO
+                ENDDO
+             ENDIF
+
+          ENDIF
+
+          !c***** end trace gases *****
+
+          DO i=1,m
+             x1(i)=0.0_r8
+             x2(i)=0.0_r8
+             x3(i)=0.0_r8
+          ENDDO
+
+          !c-----trant is the total transmittance between levels k1 and k2.
+          !c     fclr is the clear line-of-sight  between levels k1 and k2.
+
+          DO k=1,np+1
+             DO i=1,m
+                trant(i,k)=1.0_r8
+                fclr(i,k) =1.0_r8
+             ENDDO
+          ENDDO
+
+          !c-----do-loop 3000 are for computing (a) transmittance, trant(i,k2),
+          !c     and (b) clear line-of-sight, fclr(i,k2), between levels k1 and k2.
+
+          DO  k2=k1+1,np+1 !do 3000 k2=k1+1,np+1
+
+             IF (h2otbl) THEN
+
+                !c-----Compute water vapor transmittance using table look-up.
+                !c     The following values are taken from Table 8.
+
+                w1=-8.0_r8
+                p1=-2.0_r8
+                dwe=0.3_r8
+                dpe=0.2_r8
+
+                IF (ibn.EQ.1) THEN
+                   CALL tablup(k2,m,np,nx,nh,dh2o,pa,dt,x1,x2,x3, &
+                        w1,p1,dwe,dpe,h11,h12,h13,trant)
+
+                ENDIF
+                IF (ibn.EQ.2) THEN
+                   CALL tablup(k2,m,np,nx,nh,dh2o,pa,dt,x1,x2,x3, &
+                        w1,p1,dwe,dpe,h21,h22,h23,trant)
+
+                ENDIF
+                IF (ibn.EQ.8) THEN
+                   CALL tablup(k2,m,np,nx,nh,dh2o,pa,dt,x1,x2,x3, &
+                        w1,p1,dwe,dpe,h81,h82,h83,trant)
+                ENDIF
+
+                IF (conbnd) THEN
+                   DO i=1,m
+                      tcon(i,1)=tcon(i,1)*conexp(i,k2-1,1)
+                      trant(i,k2)=trant(i,k2)*tcon(i,1)
+                   ENDDO
+                ENDIF
+
+             ELSE
+
+                !c-----compute water vapor transmittance using k-distribution
+
+                IF (.NOT.b10bnd) THEN
+                   CALL h2okdis(ibn,m,np,k2-1,fkw,gkw,ne,h2oexp,conexp, &
+                        th2o,tcon,trant)
+                ENDIF
+
+             ENDIF
+
+             IF (co2bnd) THEN
+
+                IF (high) THEN
+
+                   !c-----Compute co2 transmittance using table look-up method.
+                   !c     The following values are taken from Table 8.
+
+                   w1=-4.0_r8
+                   p1=-2.0_r8
+                   dwe=0.3_r8
+                   dpe=0.2_r8
+                   CALL tablup(k2,m,np,nx,nc,dco2,pa,dt,x1,x2,x3, &
+                        w1,p1,dwe,dpe,c1,c2,c3,trant)
+                ELSE
+
+                   !c-----compute co2 transmittance using k-distribution method
+                   CALL co2kdis(m,np,k2-1,co2exp,tco2,trant)
+
+                ENDIF
+
+             ENDIF
+
+             !c-----Always use table look-up to compute o3 transmittance.
+             !c     The following values are taken from Table 8.
+
+             IF (oznbnd) THEN
+                w1=-6.0_r8
+                p1=-2.0_r8
+                dwe=0.3_r8
+                dpe=0.2_r8
+                CALL tablup(k2,m,np,nx,no,do3,pa,dt,x1,x2,x3, &
+                     w1,p1,dwe,dpe,o1,o2,o3,trant)
+             ENDIF
+
+             !c***** for trace gases *****
+
+             IF (trace) THEN
+
+                !c-----compute n2o transmittance using k-distribution method
+
+                IF (n2obnd) THEN
+                   CALL n2okdis(ibn,m,np,k2-1,n2oexp,tn2o,trant)
+                ENDIF
+
+                !c-----compute ch4 transmittance using k-distribution method
+
+                IF (ch4bnd) THEN
+                   CALL ch4kdis(ibn,m,np,k2-1,ch4exp,tch4,trant)
+                ENDIF
+
+                !c-----compute co2-minor transmittance using k-distribution method
+
+                IF (combnd) THEN
+                   CALL comkdis(ibn,m,np,k2-1,comexp,tcom,trant)
+                ENDIF
+
+                !c-----compute cfc11 transmittance using k-distribution method
+
+                IF (f11bnd) THEN
+                   CALL cfckdis(m,np,k2-1,f11exp,tf11,trant)
+                ENDIF
+
+                !c-----compute cfc12 transmittance using k-distribution method
+
+                IF (f12bnd) THEN
+                   CALL cfckdis(m,np,k2-1,f12exp,tf12,trant)
+                ENDIF
+
+                !c-----compute cfc22 transmittance using k-distribution method
+
+                IF (f22bnd) THEN
+                   CALL cfckdis(m,np,k2-1,f22exp,tf22,trant)
+                ENDIF
+
+                !c-----Compute transmittance in band 10 using k-distribution method.
+                !c     For band 10, trant is the change in transmittance due to n2o 
+                !c     absorption.
+
+                IF (b10bnd) THEN
+                   CALL b10kdis(m,np,k2-1,h2oexp,conexp,co2exp,n2oexp &
+                        ,th2o,tcon,tco2,tn2o,trant)
+
+                ENDIF
+
+             ENDIF
+
+             !c*****   end trace gases  *****
+
+             !c-----include aerosol effect
+
+             IF (aerosol) THEN
+                DO i=1,m
+                   tranal(i)=tranal(i)*taerlyr(i,k2-1)
+                   trant(i,k2)=trant(i,k2) *tranal(i)
+                ENDDO
+             ENDIF
+
+             !c***** cloud overlapping *****
+
+             IF (.NOT. overcast) THEN
+                CALL cldovlp (m,np,k2,ict,icb,it,im,ib,itx,imx,ibx, &
+                     cldhi,cldmd,cldlw,fcld,tcldlyr,fclr)
+
+             ELSE
+
+                DO i=1,m
+                   fclr(i,k2)=fclr(i,k2)*tcldlyr(i,k2-1)
+                ENDDO
+
+             ENDIF
+
+          END DO !3000 continue
+
+          !c-----do-loop 4000 is for computing upward and downward fluxes
+          !c     for each spectral band
+          !c     flcu, flcd: clear-sky upward and downward fluxes
+          !c     flxu, flxd: all-sky   upward and downward fluxes
+
+          DO  k2=k1+1,np+1 ! do 4000 k2=k1+1,np+1
+
+             IF (k2.EQ.k1+1 .AND. ibn .NE. 10) THEN
+
+                !c-----The first terms on the rhs of Eqs. (8.15) and (8.16)
+
+                DO i=1,m
+                   flcu(i,k1)=flcu(i,k1)-bu(i,k1)
+                   flcd(i,k2)=flcd(i,k2)+bd(i,k1)
+                   flxu(i,k1)=flxu(i,k1)-bu(i,k1)
+                   flxd(i,k2)=flxd(i,k2)+bd(i,k1)
+                ENDDO
+
+             ENDIF
+
+             !c-----The summation terms on the rhs of Eqs. (8.15) and (8.16).
+             !c     Also see Eqs. (5.4) and (5.5) for Band 10.
+
+             DO i=1,m
+                xx=trant(i,k2)*(bu(i,k2-1)-bu(i,k2))
+                flcu(i,k1) =flcu(i,k1)+xx
+                flxu(i,k1) =flxu(i,k1)+xx*fclr(i,k2)
+                xx=trant(i,k2)*(bd(i,k1-1)-bd(i,k1))
+                flcd(i,k2) =flcd(i,k2)+xx
+                flxd(i,k2) =flxd(i,k2)+xx*fclr(i,k2)
+             ENDDO
+
+          END DO! 4000 continue
+
+          !c-----Here, fclr and trant are, respectively, the clear line-of-sight 
+          !c     and the transmittance between k1 and the surface.
+
+          DO i=1,m
+             trantcr(i,k1) =trant(i,np+1)
+             transfc(i,k1) =trant(i,np+1)*fclr(i,np+1)
+          ENDDO
+
+          !c-----compute the partial derivative of fluxes with respect to
+          !c     surface temperature (Eq. 3.12). 
+          !c     Note: upward flux is negative, and so is dfdts.
+
+          DO i=1,m
+             dfdts(i,k1) =dfdts(i,k1)-dbs(i)*transfc(i,k1)
+          ENDDO
+
+       END DO! 2000 continue
+
+       IF (.NOT. b10bnd) THEN
+
+          !c-----For surface emission.
+          !c     Note: blayer(i,np+1) and dbs include the surface emissivity effect.
+          !c     Both dfdts and sfcem are negative quantities.
+
+          DO i=1,m
+             flcu(i,np+1)=-blayer(i,np+1)
+             flxu(i,np+1)=-blayer(i,np+1)
+             sfcem(i)=sfcem(i)-blayer(i,np+1)
+             dfdts(i,np+1)=dfdts(i,np+1)-dbs(i)
+          ENDDO
+
+
+          !c-----Add the flux reflected by the surface. (Second term on the
+          !c     rhs of Eq. 8.16)
+
+          DO k=1,np+1
+             DO i=1,m
+                flcu(i,k)=flcu(i,k)- &
+                     flcd(i,np+1)*trantcr(i,k)*rflxs(i)
+                flxu(i,k)=flxu(i,k)-   &                      
+                     flxd(i,np+1)*transfc(i,k)*rflxs(i)   
+             ENDDO
+          ENDDO
+
+       ENDIF
+
+       !c-----Summation of fluxes over spectral bands
+
+       DO k=1,np+1
+          DO i=1,m
+             flc(i,k)=flc(i,k)+flcd(i,k)+flcu(i,k)
+             flx(i,k)=flx(i,k)+flxd(i,k)+flxu(i,k)
+          ENDDO
+       ENDDO
+
+    END DO! 1000 continue
+
+
+  END SUBROUTINE irrad

@@ -1,0 +1,338 @@
+#!/bin/bash
+#help#
+#****************************************************************************#
+# Script to run agcm 1D, version 4.0.0 model on CRAY.
+#
+# usage: run_bam CaseName
+# CaseName: Experiment name which is linked
+#           to a directory containing initial condition, sonding profile 
+#           (SOND_IN) and boundary condition(s) (FORCINGS_ASCII or FORCING_IN).
+#           FORCINGS_ASCII contains a time series of tendencies profiles
+#           FORCING_IN contains a tendency profile, that is kept constant
+#           for the integration.
+#           Always:
+#           Although in CaseName some configurations of files like
+#           VegetationMask, DeepSoilTemperature and others are done. It
+#           is convenient to review them.
+#
+# Enver Ramirez
+#****************************************************************************#
+#help#
+
+#Input and Output directories
+dirbase=$(dirname "`pwd`")
+DataIn=${dirbase}/model/datain/
+DataOut=${dirbase}/model/dataout/
+
+#DataIn=/home/enver/modelos/BAM_1D/model/datain/ #  /home/enver/Modelos/PHYSCS-4.0.0_enver_paulo3/model/datain/
+#DataOut=/home/enver/modelos/BAM_1D/model/dataout/ # /home/enver/Modelos/PHYSCS-4.0.0_enver_paulo3/model/dataout/
+
+# Checking arguments
+if [ "${1}" = "help" -o -z "${1}" ]
+then
+  cat < ${0} | sed -n '/^#help#/,/^#help#/p'
+  echo "Available data directories are in: "
+  echo "       "$DataIn
+  exit 1
+fi
+
+path=`pwd`
+path2=`echo ${path} | awk '{print substr($1,1,index($1,"/run")-1)}'`
+CaseName=${1}
+
+
+if [ ! -d "${DataIn}/${CaseName}" ]
+then
+ echo "Experiment "${CaseName}" does not exist"
+ echo "Available experiments are in:"
+ echo ${DataIn}
+ exit 1
+fi
+
+#Ensemble of Physics
+#Exp is the only mandatory variable. Experiment name and ensemble length is related to this variable
+Exp=(_01)
+ILCON=(HUMO)	# HUMO_NN HUMO (UKMO HGFS MIC HUMO LSC NON)        #  Opcoes de microfisicas
+ISCON=(NON)	# - TIED - (SOUZ UW JHK MFLX TIED NON) #  Opcoes de conveccao rasa cumulus
+ICCON=(NON)	  # - GRE  - (GEC GRE RAS NON)           #  Opcoes de conveccao deep cumulus
+ISWRAD=(CRD)	#(CRD CRD CRD)                       #  Short wave radiation
+ILWRAD=(RRTMG)	#(RRTMG HRS HRS)                   #  long wave radiation
+
+schemes=(1 1 1 1)    #(3 3 3) 
+Wgh1=(0. 0. 0. 0.)   #(0.0 0.0 0.0) 
+Wgh2=(1. 1. 1. 1.)   #(0.0 0.0 0.0)
+Wgh3=(0. 0. 0. 0.)   #(1.0 1.0 1.0) 
+CRDCLD=(6 6 6 6)     #(1 1 1) 
+slhum=(.TRUE. .TRUE. .TRUE. .TRUE.) #(.FALSE.)     #(.FALSE. .TRUE. .FALSE.)
+microphys=(.TRUE. .TRUE. .TRUE. .TRUE.) #(.FALSE. .TRUE. .FALSE.)
+forcings_weight_d=(1. 1. 1. 1.)         # test sensitivity of dynamics forcing
+forcings_weight_t=(1. 1. 1. 1.)         # '                 ' temperature forcing
+forcings_weight_m=(1. 1. 1. 1.)         # '                 ' moisture forcing
+
+
+x=0
+upx=${#Exp[@]}
+while [ "$x" -lt "$upx" ]
+do
+
+#Check existence of output dir
+dirfNameOutput=${DataOut}Exp${Exp[x]}/
+
+if [ -d "$dirfNameOutput" ]
+then
+    echo "directory $dirfNameOutput exist"
+else
+    mkdir $dirfNameOutput
+fi
+
+# copy CaseName data to datain (IC, BC, PARMODEL default)
+if [ "$x" -eq "0" ]
+then
+  # TODO Denis - apagar arquivos dde model/datain antes de copiar. Validar. Tentando apagando tudo ...
+  echo "rm ${DataIn}*"
+  rm ${DataIn}*
+
+  echo "copy IC, BC, PARMODEL from "${CaseName}
+  echo "cp "${DataIn}/${CaseName}/*" "${DataIn}/
+  echo "cp "${DataIn}/${CaseName}/PARMODEL" "${path}/
+  cp ${DataIn}/${CaseName}/* ${DataIn}/
+  cp ${DataIn}/common/* ${DataIn}/
+  cp ${DataIn}/${CaseName}/PARMODEL ${path}/
+else
+  echo "jumping copy" 
+fi
+
+
+#erg2015 cp ${path}/PARMODEL ${path2}/model/exec/
+#erg2015 cp ${path}/SOND_IN ${path2}/model/datain/
+#erg2015 cp ${path}/FORCINGS_ASCII ${path2}/model/datain/
+
+#erg##########################################################
+#cat ......
+#erg##########################################################
+
+cp ${path}/PARMODEL ${path}/parmodel_test
+cp ${path}/PARMODEL ${path}/PARMODEL.BKP.ENVER
+echo "cp "${path}/PARMODEL ${path}/parmodel_test
+echo "cp "${path}/PARMODEL ${path}/PARMODEL.BKP.ENVER
+
+ echo ${Exp[x]}
+ 
+aspa="'"
+coma=","
+
+cat ${path}/parmodel_test  | awk -v var="${DataIn}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,7) == "path_in" && var != ""  )
+                           { print " "substr($1,1,7)" = "aspa var aspa coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${dirfNameOutput}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,14) == "dirfNameOutput" && var != ""  )
+                           { print " "substr($1,1,14)" = "aspa var aspa coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${ICCON[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,5) == "ICCON" && var != ""  )
+                           { printf(" ICCON = %s%s%s,      ! iccon=KUO:cumulus convection(kuo)\n",aspa,var,aspa) }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${ILCON[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,5) == "ILCON" && var != ""  )
+                           { print " "substr($1,1,5)" = "aspa var aspa coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${ISCON[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,5) == "ISCON" && var != ""  )
+                           { print " "substr($1,1,5)" = "aspa var aspa coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${ISWRAD[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,6) == "ISWRAD" && var != ""  )
+                           { print " "substr($1,1,6)" = "aspa var aspa coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${ILWRAD[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,6) == "ILWRAD" && var != ""  )
+                           { print " "substr($1,1,6)" = "aspa var aspa coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${ASOLC[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,5) == "ASOLC" && var != ""  )
+                           { print " "substr($1,1,5)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${ASOLM[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,5) == "ASOLM" && var != ""  )
+                           { print " "substr($1,1,5)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${grepar1[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,7) == "grepar1" && var != ""  )
+                           { print " "substr($1,1,7)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${grepar2[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,7) == "grepar2" && var != ""  )
+                           { print " "substr($1,1,7)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${grepar3[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,7) == "grepar3" && var != ""  )
+                           { print " "substr($1,1,7)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${atmpbl[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,6) == "atmpbl" && var != ""  )
+                           { print " "substr($1,1,6)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${CRDCLD[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,6) == "CRDCLD" && var != ""  )
+                           { print " "substr($1,1,6)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${PBLEntrain[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,10) == "PBLEntrain" && var != ""  )
+                           { print " "substr($1,1,10)" = "aspa var aspa coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${schemes[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,7) == "schemes" && var != ""  )
+                           { print " "substr($1,1,7)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${OCFLUX[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,6) == "OCFLUX" && var != ""  )
+                           { print " "substr($1,1,6)" = "aspa var aspa coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${SLABOCEAN[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,9) == "SLABOCEAN" && var != ""  )
+                           { print " "substr($1,1,9)" = "aspa var aspa coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${ICEMODEL[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,8) == "ICEMODEL" && var != ""  )
+                           { print " "substr($1,1,8)" = "aspa var aspa coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${omlmodel[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,8) == "omlmodel" && var != ""  )
+                           { print " "substr($1,1,8)" = "aspa var aspa coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${oml_hml0[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,8) == "oml_hml0" && var != ""  )
+                           { print " "substr($1,1,8)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${Wgh1[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,4) == "Wgh1" && var != ""  )
+                           { print " "substr($1,1,4)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${Wgh2[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,4) == "Wgh2" && var != ""  )
+                           { print " "substr($1,1,4)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${Wgh3[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,4) == "Wgh3" && var != ""  )
+                           { print " "substr($1,1,4)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${microphys[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,9) == "microphys" && var != ""  )
+                           { print " "substr($1,1,9)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${slhum[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,5) == "slhum" && var != ""  )
+                           { print " "substr($1,1,5)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${forcings_weight_d[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,17) == "forcings_weight_d" && var != ""  )
+                           { print " "substr($1,1,17)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${forcings_weight_t[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,17) == "forcings_weight_t" && var != ""  )
+                           { print " "substr($1,1,17)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cat ${path}/parmodel_test  | awk -v var="${forcings_weight_m[x]}" -v aspa=$aspa -v coma=$coma '{if (substr($1,1,17) == "forcings_weight_m" && var != ""  )
+                           { print " "substr($1,1,17)" = "var coma }
+                          else 
+                           { print $0 }
+                          }' > ${path}/parmodel_test_$x; cp ${path}/parmodel_test_$x ${path}/parmodel_test
+
+cp ${path}/parmodel_test ${path}/PARMODEL
+echo "cp "${path}/parmodel_test" "${path}/PARMODEL
+
+#erg##########################################################
+
+# Save run details
+cp ${path}/PARMODEL ${dirfNameOutput}
+echo "cp "${path}/PARMODEL" "${dirfNameOutput}
+
+# copy namelist to executable area
+#erg cp ${path}/PARMODEL ${SUBMIT_HOME}/agcm1d_cptec_inpe/PHYSCS-2.0.0/model/exec/
+#erg cp ${path2}/model/exec/ParModel_MPI ${SUBMIT_HOME}/agcm1d_cptec_inpe/PHYSCS-2.0.0/model/exec/
+cp ${path}/PARMODEL ${path2}/model/exec/
+echo "cp "${path}/PARMODEL" "${path2}/model/exec/
+#erg cp ${path}/SOND_IN ${path2}/model/datain/
+#erg cp ${path}/FORCINGS_ASCII ${path2}/model/datain/
+###erg cp ${path2}/model/exec/ParModel_MPI ${DataIn}/../exec/
+
+pwd > ${path2}/run/model.in
+echo "${DataIn}" >> ${path2}/run/model.in  #erg  "${SUBMIT_HOME}/PHYSCS-2.0.0/model/datain" >> ${path2}/run/model.in
+echo "${DataOut}/Exp${Exp[x]}"   >> ${path2}/run/model.in   #erg "${WORK_HOME}/PHYSCS-2.0.0/model/dataout/Exp${Exp[x]}"   >> ${path2}/run/model.in
+
+ulimit -s unlimited
+cat <<EOT1 > ${path2}/run/xmit_Exp${Exp[x]}.sh
+#!/bin/bash
+#
+ulimit -s unlimited
+#erg cd ${SUBMIT_HOME}/PHYSCS-2.0.0/model/exec
+cd ${path2}/model/exec
+#erg ${SUBMIT_HOME}/PHYSCS-2.0.0/model/exec/ParModel_MPI < ${path2}/run/model.in
+#export GFORTRAN_CONVERT_UNIT=swap
+${path2}/model/exec/ParModel_MPI < ${path2}/run/model.in
+EOT1
+chmod 777 ${path2}/run/xmit_Exp${Exp[x]}.sh
+${path2}/run/xmit_Exp${Exp[x]}.sh
+
+#cp ${path}/PARMODEL.BKP.ENVER ${path}/PARMODEL
+#Cleaning xmit
+rm ${path2}/run/xmit_Exp${Exp[x]}.sh
+x=`expr $x + 1`
+done

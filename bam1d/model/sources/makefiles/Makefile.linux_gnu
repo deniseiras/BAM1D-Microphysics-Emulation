@@ -1,0 +1,46 @@
+#
+#  $Author: pkubota $
+#  $Date: 2007/10/10 20:24:23 $
+#  $Revision: 1.1 $
+#
+# $Id: Makefile.linux,v 1.1 2007/10/10 20:24:23 pkubota Exp $
+#
+#
+# INTEL COMPILER - WORKING
+#
+# Sometimes ifort fails to statically link the executable with
+# optmization giving and error message like:
+#   ifort: error: problem during multi-file optimization compilation (code 1)
+# Here we adopt the safe procedure of passing -O0 to LOADFLAG
+#
+
+###########################################  DENIS VERSION ##################################################33
+
+# FTRACE= -O0 -g -fbounds-check -Waliasing -Wall -fbacktrace -ffpe-trap=invalid,overflow,zero  -finit-real=nan -finit-integer=nan -Warray-bounds
+# OPENMP=
+
+# Denis - O0 - original
+# F90=gfortran -O0 -ffast-math -fconvert=big-endian -ffree-line-length-none -ffast-math -funroll-loops -ftree-vectorizer-verbose=2
+
+# Denis - Og_e_otimizacoes
+F90=gfortran -Og -g -fbacktrace -fconvert=big-endian -ffree-line-length-none -ffast-math -funroll-loops -ftree-vectorizer-verbose=2
+
+# O2 - deu diferença na chuva com relação ao Og e otimizações no ultimo arquivo do grads
+# F90=gfortran -O2 -fconvert=big-endian -ffree-line-length-none
+
+
+
+
+# F90=gfortran $(FTRACE)
+# Nao sendo usado ...
+# F90COMMONFLAGS= -fdefault-integer-8  -fdefault-real-8 -O0 -ffast-math -fconvert=big-endian -ffree-line-length-none -ffast-math -funroll-loops -ftree-vectorizer-verbose=2
+NOASSUME=
+HVECTOR=
+INLINE_CU_GRELL=
+INLINE_CU_KUO=
+INLINE_CU_RAS=
+INLINE_SOUZA=
+LOADFLAG=
+
+
+include Makefile.common

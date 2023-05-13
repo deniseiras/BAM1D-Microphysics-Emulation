@@ -519,7 +519,7 @@ else:  # 'MLP_colk', 'MLP_T', 'CNN_T', 'LSTM'
 s2 = time.time()
 print("Time to load model: ", s2 - s1)
 
-bam1d_path = '/home/denis/_COM_BACKUP/NN_BAM1d/bam1d/work/model/exec'
+bam1d_path = '../bam1d/work/model/exec'
 # bam1d_path = '.'
 in_filename = bam1d_path + '/BAM1D_HUMO_in.csv'
 out_filename = bam1d_path + '/BAM1D_HUMO_NN_out.csv'

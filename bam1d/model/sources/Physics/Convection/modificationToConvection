@@ -1,0 +1,8 @@
+705,707c705
+<         terr(i)   =MAX(zs(i),0.0_r8)
+<         !!terr(i)   =4000.0_r8 ! 4000.0_r8 !!!320.0_r8!!  AMAZON=200., ANDES1=4000.!ARM=320.00                          !ARM USA OKL..nilo
+< 
+---
+>        terr(i)   =MAX(zs(i),0.0_r8)
+815d812
+<             jdt                            ,& !INTEGER...time step  july2015

@@ -1,0 +1,157 @@
+F90=pgf90
+
+F90COMMONFLAGS= -r8 -i8 -byteswapio -O0
+#F90COMMONFLAGS= -eCw -Wf" -init stack=nan" 
+#F90COMMONFLAGS= -r8 -i8 -static
+#F90COMMONFLAGS= -ew 
+#F90COMMONFLAGSC_eCw=   -eCw -ftrace -Wf" -init stack=nan"
+#F90_32BITS = -eC -Wf" -init stack=nan" 
+F90_32BITS =  
+#F90_32BITS = -C ssafe  -ftrace -Wf" -init stack=nan"
+EXEC=../exec/modelsl
+
+
+OBJ= \
+	AddTend.o \
+	Constants.o \
+	Convection.o \
+	CpGrell_Enio.o \
+	Diagnostics.o \
+	FFT.o \
+	FieldsSL.o \
+	FieldsPhyscs.o \
+	GridHistory.o \
+	GrpCompSL.o \
+	InputOutput.o  \
+	IntNam.o \
+	InterPhyDyn2.o \
+	Init.o \
+	ModelSL.o \
+	physcs.o \
+	PlanBoundLayer.o \
+	Radiation.o \
+	ReadWriteSpec.o \
+	ShsouzNew_Enio.o \
+	Sizes.o \
+	Surface.o \
+	TimeFilter.o \
+	TimeStamp.o \
+	TimeStepSL.o \
+	TmsTmp.o \
+	Utils.o \
+	VertSizesSL.o
+  
+model:	$(OBJ)
+	$(F90) -o $(EXEC) $(F90COMMONFLAGS) $(OBJ) 
+
+AddTend.o	:	AddTend.f90 FieldsSL.o Sizes.o
+	$(F90) -c $(F90COMMONFLAGS) AddTend.f90
+
+
+Constants.o	:	Constants.f90
+	$(F90) -c $(F90COMMONFLAGS) Constants.f90
+
+
+Convection.o	:	Convection.f90 Constants.o Diagnostics.o GridHistory.o \
+	 InputOutput.o IntNam.o ShsouzNew_Enio.o CpGrell_Enio.o
+	$(F90) -c  $(F90COMMONFLAGS) Convection.f90
+
+Diagnostics.o	:	Diagnostics.f90 InputOutput.o Constants.o \
+	 ReadWriteSpec.o  IntNam.o TmsTmp.o
+	$(F90) -c $(F90COMMONFLAGS) Diagnostics.f90
+
+
+FieldsPhyscs.o	:	FieldsPhyscs.f90 InputOutput.o  IntNam.o ReadWriteSpec.o \
+	 Surface.o
+	$(F90) -c $(F90COMMONFLAGS) FieldsPhyscs.f90
+
+
+IntNam.o	:	IntNam.f90
+	  $(F90) -c $(F90COMMONFLAGS) IntNam.f90
+
+GridHistory.o	:	GridHistory.f90 InputOutput.o IntNam.o TmsTmp.o
+	$(F90) -c $(F90COMMONFLAGS) GridHistory.f90
+
+
+GrpCompSL.o	:	GrpCompSL.f90 Constants.o \
+	VertSizesSL.o InterPhyDyn2.o Sizes.o \
+	GridHistory.o Diagnostics.o FieldsPhyscs.o IntNam.o
+	$(F90) -c $(F90COMMONFLAGS) GrpCompSL.f90
+
+
+InputOutput.o	:	InputOutput.f90 ReadWriteSpec.o
+	$(F90) -c $(F90COMMONFLAGS) InputOutput.f90
+
+
+PlanBoundLayer.o	:	PlanBoundLayer.f90  Constants.o 
+	$(F90) -c $(F90COMMONFLAGS) PlanBoundLayer.f90
+
+Utils.o	:	Utils.f90
+	$(F90) -c $(F90COMMONFLAGS) Utils.f90
+
+Radiation.o	:	Radiation.f90 Constants.o Diagnostics.o Utils.o TmsTmp.o IntNam.o
+	$(F90)  -c $(F90COMMONFLAGS) Radiation.f90
+
+Surface.o	:	Surface.f90 Constants.o InputOutput.o
+	$(F90) -c  $(F90COMMONFLAGS) Surface.f90
+
+Init.o	:	Init.f90   Constants.o  FFT.o  \
+	FieldsSL.o Sizes.o  VertSizesSL.o 
+	$(F90) -c $(F90COMMONFLAGS) Init.f90
+
+
+InterPhyDyn2.o	:	InterPhyDyn2.f90  VertSizesSL.o Sizes.o \
+	 FieldsPhyscs.o Convection.o
+	$(F90) -c $(F90COMMONFLAGS) InterPhyDyn2.f90
+
+
+ModelSL.o	:	ModelSL.f90  FieldsSL.o  \
+	Init.o  FieldsPhyscs.o Constants.o\
+	InputOutput.o IntNam.o GridHistory.o Diagnostics.o \
+	TimeStamp.o  TimeStepSL.o  ReadWriteSpec.o  Convection.o \
+	Sizes.o  VertSizesSL.o  TmsTmp.o Radiation.o PlanBoundLayer.o Surface.o 
+	$(F90) -c $(F90COMMONFLAGS) ModelSL.f90
+
+physcs.o	:	physcs.f90 Constants.o Radiation.o Surface.o \
+	                Diagnostics.o PlanBoundLayer.o GridHistory.o \
+			InputOutput.o IntNam.o
+	$(F90) -c $(F90COMMONFLAGS) physcs.f90	
+
+
+ReadWriteSpec.o	:	ReadWriteSpec.f90
+	$(F90) -c $(F90_32BITS) ReadWriteSpec.f90
+
+
+TimeFilter.o	:	TimeFilter.f90   FieldsSL.o Sizes.o 
+	$(F90) -c $(F90COMMONFLAGS) TimeFilter.f90
+
+
+TmsTmp.o	:	TmsTmp.f90
+	$(F90) -c $(F90COMMONFLAGS) TmsTmp.f90
+	
+	
+TimeStepSL.o	:	TimeStepSL.f90   Constants.o FieldsSL.o  \
+	AddTend.o  IntNam.o GrpCompSL.o  TimeFilter.o  Sizes.o  \
+	VertSizesSL.o Radiation.o FieldsPhyscs.o InterPhyDyn2.o
+	$(F90) -c $(F90COMMONFLAGS) TimeStepSL.f90
+
+ShsouzNew_Enio.o	:	ShsouzNew_Enio.f90
+	$(F90) -c $(F90COMMONFLAGS)  ShsouzNew_Enio.f90
+
+
+VertSizesSL.o	:	VertSizesSL.f90   Constants.o
+	$(F90) -c $(F90COMMONFLAGS) VertSizesSL.f90
+
+
+.SUFFIXES:
+.SUFFIXES: .f90 .o
+
+
+.f90.o :
+	$(F90) -c $(F90COMMONFLAGS) $<
+
+
+clean:
+	-rm -f $(OBJ) 
+	-rm -f $(EXEC) 
+	-rm -f *.mod

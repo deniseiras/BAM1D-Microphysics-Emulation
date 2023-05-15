@@ -62,5 +62,6 @@ L run                                              -  scripts for compiling and 
 TODO:
 - Upload paper schematic
 - Upload BAM1D Fortran emulation version
+- Change codes training and running to run easily in Github
 
 <!-- This notebook has been saved in gdrive and copied here  -->
